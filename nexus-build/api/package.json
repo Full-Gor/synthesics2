@@ -1,0 +1,24 @@
+{
+  "name": "synthesics2",
+  "version": "1.0.0",
+  "description": "Self-hosted mobile build system for Windows",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": [
+    "android",
+    "build",
+    "apk",
+    "react-native",
+    "expo",
+    "flutter",
+    "self-hosted"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

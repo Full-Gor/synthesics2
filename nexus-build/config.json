@@ -1,0 +1,58 @@
+{
+  "server": {
+    "port": 3001,
+    "host": "0.0.0.0"
+  },
+  "paths": {
+    "androidSdk": "C:\\Users\\<USER>\\AppData\\Local\\Android\\Sdk",
+    "flutterSdk": "C:\\Users\\<USER>\\flutter",
+    "javaHome": "C:\\Program Files\\Java\\jdk-17"
+  },
+  "storage": {
+    "builds": "./storage/builds",
+    "apks": "./storage/apks",
+    "logs": "./storage/logs",
+    "repos": "./storage/repos"
+  },
+  "build": {
+    "timeout": 1800000,
+    "maxConcurrent": 6,
+    "cleanupAfterBuild": true,
+    "keepBuildsForDays": 7
+  },
+  "auth": {
+    "enabled": false,
+    "token": ""
+  },
+  "webhooks": {
+    "secret": "",
+    "autoTrigger": true
+  },
+  "tunnel": {
+    "enabled": true,
+    "server": {
+      "host": "nexuspace.duckdns.org",
+      "port": 443,
+      "tls": true,
+      "rejectUnauthorized": true
+    },
+    "auth": {
+      "id": "nexusbuild-client-2",
+      "key": "YOUR_PSK_KEY_HERE"
+    },
+    "tunnels": [
+      {
+        "domain": "synthesics2.duckdns.org",
+        "localHost": "localhost",
+        "localPort": 3001,
+        "localProtocol": "http"
+      }
+    ],
+    "reconnect": {
+      "enabled": true,
+      "delay": 5000,
+      "maxDelay": 60000,
+      "multiplier": 1.5
+    }
+  }
+}

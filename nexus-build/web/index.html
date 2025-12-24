@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Synthesics2 - Mobile Build System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📱</text></svg>">
+</head>
+<body>
+    <!-- Fond cyberpunk -->
+    <div class="cyber-grid"></div>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="header-left">
+            <h1 class="logo">
+                <span class="logo-icon">⚡</span>
+                <span class="logo-text">Synthesics<span class="logo-version">2</span></span>
+            </h1>
+            <span class="tagline">Self-Hosted Mobile Build System</span>
+        </div>
+        <div class="header-right">
+            <div class="tunnel-status" id="tunnelStatus">
+                <span class="status-dot"></span>
+                <span class="status-text">Tunnel: --</span>
+            </div>
+            <button class="btn btn-icon" id="healthCheckBtn" title="Health Check">
+                <span>🔍</span>
+            </button>
+            <button class="btn btn-primary" id="newBuildBtn">
+                <span>+</span> Nouveau Build
+            </button>
+        </div>
+    </header>
+
+    <!-- Stats Bar -->
+    <section class="stats-bar">
+        <div class="stat-card">
+            <div class="stat-icon queued">⏳</div>
+            <div class="stat-info">
+                <span class="stat-value" id="statQueued">0</span>
+                <span class="stat-label">En attente</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon building">🔨</div>
+            <div class="stat-info">
+                <span class="stat-value" id="statBuilding">0</span>
+                <span class="stat-label">En cours</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon success">✅</div>
+            <div class="stat-info">
+                <span class="stat-value" id="statSuccess">0</span>
+                <span class="stat-label">Réussis</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon failed">❌</div>
+            <div class="stat-info">
+                <span class="stat-value" id="statFailed">0</span>
+                <span class="stat-label">Échoués</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon time">⏱️</div>
+            <div class="stat-info">
+                <span class="stat-value" id="statAvgTime">--</span>
+                <span class="stat-label">Temps moyen</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Builds List -->
+        <section class="builds-section">
+            <div class="section-header">
+                <h2>Builds</h2>
+                <div class="filters">
+                    <button class="filter-btn active" data-status="all">Tous</button>
+                    <button class="filter-btn" data-status="queued">En attente</button>
+                    <button class="filter-btn" data-status="building">En cours</button>
+                    <button class="filter-btn" data-status="success">Réussis</button>
+                    <button class="filter-btn" data-status="failed">Échoués</button>
+                </div>
+            </div>
+            <div class="builds-list" id="buildsList">
+                <div class="loading">Chargement...</div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal: New Build -->
+    <div class="modal" id="newBuildModal">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Nouveau Build</h2>
+                <button class="modal-close" id="closeNewBuildModal">&times;</button>
+            </div>
+            <form id="newBuildForm">
+                <div class="form-group">
+                    <label for="repoUrl">URL du dépôt Git *</label>
+                    <input type="url" id="repoUrl" name="repoUrl" required
+                           placeholder="https://github.com/user/repo.git">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="branch">Branche</label>
+                        <input type="text" id="branch" name="branch" value="main"
+                               placeholder="main">
+                    </div>
+                    <div class="form-group">
+                        <label for="subdir">Sous-dossier</label>
+                        <input type="text" id="subdir" name="subdir"
+                               placeholder="(auto-détection)">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="framework">Framework</label>
+                        <select id="framework" name="framework">
+                            <option value="auto">Auto-détection</option>
+                            <option value="expo">Expo</option>
+                            <option value="react-native">React Native</option>
+                            <option value="flutter">Flutter</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="buildType">Type de build</label>
+                        <select id="buildType" name="buildType">
+                            <option value="release">Release</option>
+                            <option value="debug">Debug</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="cancelNewBuild">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Lancer le build</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Build Details -->
+    <div class="modal" id="buildDetailsModal">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h2>Détails du Build</h2>
+                <button class="modal-close" id="closeBuildDetailsModal">&times;</button>
+            </div>
+            <div class="build-details" id="buildDetails">
+                <!-- Contenu dynamique -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Health Check -->
+    <div class="modal" id="healthModal">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Health Check</h2>
+                <button class="modal-close" id="closeHealthModal">&times;</button>
+            </div>
+            <div class="health-content" id="healthContent">
+                <div class="loading">Vérification en cours...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
