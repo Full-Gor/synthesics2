@@ -316,13 +316,13 @@ body {
 
 .main-nav a.nav-highlight {
     margin-left: auto;
-    background: var(--accent-success);
+    background: var(--primary);
     color: #fff;
     border-radius: 0;
 }
 
 .main-nav a.nav-highlight:hover {
-    background: #219a52;
+    background: #1a252f;
 }
 
 /* === STATS BAR === */
