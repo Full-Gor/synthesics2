@@ -6,7 +6,7 @@
     <title>Synthesics2 - Mobile Build System</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📱</text></svg>">
 </head>
@@ -18,7 +18,6 @@
     <header class="header">
         <div class="header-left">
             <h1 class="logo">
-                <span class="logo-icon">⚡</span>
                 <span class="logo-text">Synthesics<span class="logo-version">2</span></span>
             </h1>
             <span class="tagline">Self-Hosted Mobile Build System</span>
@@ -28,52 +27,55 @@
                 <span class="status-dot"></span>
                 <span class="status-text">Tunnel: --</span>
             </div>
-            <button class="btn btn-icon" id="healthCheckBtn" title="Health Check">
-                <span>🔍</span>
-            </button>
-            <button class="btn btn-primary" id="newBuildBtn">
-                <span>+</span> Nouveau Build
-            </button>
+            <div class="user-info" id="userInfo"></div>
         </div>
     </header>
+
+    <!-- Navigation Bar -->
+    <nav class="main-nav">
+        <a href="/" class="active">Builds</a>
+        <a href="#" id="healthCheckBtn">Health Check</a>
+        <a href="/admin.html" class="admin-only" style="display: none;">Administration</a>
+        <a href="#" id="newBuildBtn" class="nav-highlight">Nouveau Build</a>
+    </nav>
 
     <!-- Stats Bar -->
     <section class="stats-bar">
         <div class="stat-card">
-            <div class="stat-icon queued">⏳</div>
             <div class="stat-info">
                 <span class="stat-value" id="statQueued">0</span>
                 <span class="stat-label">En attente</span>
             </div>
         </div>
         <div class="stat-card">
-            <div class="stat-icon building">🔨</div>
             <div class="stat-info">
                 <span class="stat-value" id="statBuilding">0</span>
                 <span class="stat-label">En cours</span>
             </div>
         </div>
         <div class="stat-card">
-            <div class="stat-icon success">✅</div>
             <div class="stat-info">
                 <span class="stat-value" id="statSuccess">0</span>
                 <span class="stat-label">Réussis</span>
             </div>
         </div>
         <div class="stat-card">
-            <div class="stat-icon failed">❌</div>
             <div class="stat-info">
                 <span class="stat-value" id="statFailed">0</span>
                 <span class="stat-label">Échoués</span>
             </div>
         </div>
         <div class="stat-card">
-            <div class="stat-icon time">⏱️</div>
             <div class="stat-info">
                 <span class="stat-value" id="statAvgTime">--</span>
                 <span class="stat-label">Temps moyen</span>
             </div>
         </div>
+    </section>
+
+    <!-- Announcements Banner -->
+    <section class="announcements-section" id="announcementsSection" style="display: none;">
+        <div id="announcementsList"></div>
     </section>
 
     <!-- Main Content -->
@@ -86,9 +88,12 @@
                     <button class="filter-btn active" data-status="all">Tous</button>
                     <button class="filter-btn" data-status="queued">En attente</button>
                     <button class="filter-btn" data-status="building">En cours</button>
-                    <button class="filter-btn" data-status="success">Réussis</button>
-                    <button class="filter-btn" data-status="failed">Échoués</button>
+                    <button class="filter-btn" data-status="success">Reussis</button>
+                    <button class="filter-btn" data-status="failed">Echoues</button>
                 </div>
+                <button class="btn btn-danger btn-sm admin-only" id="deleteAllBuildsBtn" onclick="deleteAllBuilds()" style="display: none;">
+                    Supprimer tout
+                </button>
             </div>
             <div class="builds-list" id="buildsList">
                 <div class="loading">Chargement...</div>
@@ -107,8 +112,10 @@
             <form id="newBuildForm">
                 <div class="form-group">
                     <label for="repoUrl">URL du dépôt Git *</label>
-                    <input type="url" id="repoUrl" name="repoUrl" required
-                           placeholder="https://github.com/user/repo.git">
+                    <input type="text" id="repoUrl" name="repoUrl" required
+                           placeholder="git@github.com:user/repo.git"
+                           pattern="^(https?://[^\s]+|git@[^\s]+:[^\s]+)$"
+                           title="URL HTTPS ou SSH (ex: git@github.com:user/repo.git)">
                 </div>
                 <div class="form-row">
                     <div class="form-group">
@@ -178,6 +185,28 @@
 
     <!-- Toast Container -->
     <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Chat Widget (for non-admin users) -->
+    <div class="chat-widget" id="chatWidget" style="display: none;">
+        <button class="chat-toggle" onclick="toggleChat()">
+            <span>?</span>
+            <span class="badge" id="chatUnreadBadge" style="display: none;">0</span>
+        </button>
+        <div class="chat-box" id="chatBox">
+            <div class="chat-box-header">
+                Contacter l'administrateur
+            </div>
+            <div class="chat-box-messages" id="chatBoxMessages">
+                <p style="text-align: center; color: var(--text-secondary); padding: 20px;">
+                    Envoyez un message a l'administrateur
+                </p>
+            </div>
+            <div class="chat-box-input">
+                <input type="text" id="chatInput" placeholder="Votre message...">
+                <button class="btn btn-primary btn-sm" onclick="sendChatMessage()">Envoyer</button>
+            </div>
+        </div>
+    </div>
 
     <script src="app.js"></script>
 </body>

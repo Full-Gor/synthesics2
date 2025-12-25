@@ -3,7 +3,7 @@
  * Client WebSocket pour exposer le serveur local via le VPS
  */
 
-const https = require('https');
+const WebSocket = require('ws');
 const http = require('http');
 const crypto = require('crypto');
 const { EventEmitter } = require('events');
@@ -15,6 +15,7 @@ class TunnelClient extends EventEmitter {
         this.localPort = config.server?.port || 3001;
         this.ws = null;
         this.connected = false;
+        this.authenticated = false;
         this.reconnectAttempts = 0;
         this.reconnectTimer = null;
         this.pingInterval = null;
@@ -22,22 +23,45 @@ class TunnelClient extends EventEmitter {
     }
 
     /**
-     * Génère la signature HMAC pour l'authentification
+     * Génère un ID unique pour les messages
      */
-    _generateAuth() {
-        const timestamp = Date.now().toString();
-        const clientId = this.config.auth.id;
-        const key = this.config.auth.key;
+    _generateId() {
+        return crypto.randomUUID();
+    }
 
-        const hmac = crypto.createHmac('sha256', key);
-        hmac.update(`${clientId}:${timestamp}`);
-        const signature = hmac.digest('hex');
-
+    /**
+     * Crée un message au format NexusTunnel
+     */
+    _createMessage(type, payload = {}) {
         return {
-            clientId,
-            timestamp,
-            signature
+            type,
+            id: this._generateId(),
+            timestamp: Date.now(),
+            payload
         };
+    }
+
+    /**
+     * Envoie un message au serveur
+     */
+    _send(type, payload = {}, requestId = null) {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            console.log(`[Tunnel] ERREUR: WebSocket non ouvert, impossible d'envoyer ${type}`);
+            return;
+        }
+
+        // Pour les réponses HTTP, utiliser le MÊME id que la requête
+        const message = {
+            type,
+            id: requestId || this._generateId(),
+            timestamp: Date.now(),
+            payload
+        };
+
+        if (type.startsWith('http_')) {
+            console.log(`[Tunnel] Envoi ${type} (${message.id.substring(0,12)})`);
+        }
+        this.ws.send(JSON.stringify(message));
     }
 
     /**
@@ -49,269 +73,224 @@ class TunnelClient extends EventEmitter {
             return;
         }
 
-        const { host, port, tls } = this.config.server;
-        const protocol = tls ? 'wss' : 'ws';
-        const auth = this._generateAuth();
+        const { host, port } = this.config.server;
+        const protocol = this.config.server.tls !== false ? 'wss' : 'ws';
+        const wsUrl = `${protocol}://${host}:${port}/tunnel`;
 
-        // Construire l'URL avec les paramètres d'auth
-        const tunnelDomains = this.config.tunnels.map(t => t.domain).join(',');
-        const wsUrl = `${protocol}://${host}:${port}/tunnel?` +
-            `clientId=${encodeURIComponent(auth.clientId)}` +
-            `&timestamp=${auth.timestamp}` +
-            `&signature=${auth.signature}` +
-            `&domains=${encodeURIComponent(tunnelDomains)}`;
+        console.log(`[Tunnel] Connexion à ${wsUrl}...`);
 
-        console.log(`[Tunnel] Connexion à ${host}:${port}...`);
-
-        // Utiliser le module WebSocket natif via une implémentation simple
-        this._connectWebSocket(wsUrl);
-    }
-
-    /**
-     * Implémentation WebSocket simple avec les modules natifs
-     */
-    _connectWebSocket(url) {
-        const parsedUrl = new URL(url);
-        const options = {
-            hostname: parsedUrl.hostname,
-            port: parsedUrl.port || (parsedUrl.protocol === 'wss:' ? 443 : 80),
-            path: parsedUrl.pathname + parsedUrl.search,
-            method: 'GET',
-            headers: {
-                'Upgrade': 'websocket',
-                'Connection': 'Upgrade',
-                'Sec-WebSocket-Key': crypto.randomBytes(16).toString('base64'),
-                'Sec-WebSocket-Version': '13'
-            },
+        this.ws = new WebSocket(wsUrl, {
             rejectUnauthorized: this.config.server.rejectUnauthorized !== false
-        };
+        });
 
-        const protocol = parsedUrl.protocol === 'wss:' ? https : http;
-
-        const req = protocol.request(options);
-
-        req.on('upgrade', (res, socket, head) => {
-            console.log('[Tunnel] Connexion WebSocket établie');
+        this.ws.on('open', () => {
+            console.log('[Tunnel] WebSocket connecté, attente du challenge...');
             this.connected = true;
             this.reconnectAttempts = 0;
-            this.ws = socket;
-
-            // Configurer le socket
-            socket.setKeepAlive(true, 30000);
-
-            // Buffer pour les données partielles
-            let buffer = Buffer.alloc(0);
-
-            socket.on('data', (data) => {
-                buffer = Buffer.concat([buffer, data]);
-                this._processBuffer(buffer, (remaining) => {
-                    buffer = remaining;
-                });
-            });
-
-            socket.on('close', () => {
-                console.log('[Tunnel] Connexion fermée');
-                this.connected = false;
-                this._scheduleReconnect();
-            });
-
-            socket.on('error', (err) => {
-                console.error('[Tunnel] Erreur socket:', err.message);
-                this.connected = false;
-                this._scheduleReconnect();
-            });
-
-            // Démarrer le ping
-            this._startPing();
-
-            // Envoyer le message d'enregistrement
-            this._sendMessage({
-                type: 'register',
-                clientId: this.config.auth.id,
-                tunnels: this.config.tunnels
-            });
-
-            this.emit('connected');
         });
 
-        req.on('error', (err) => {
-            console.error('[Tunnel] Erreur connexion:', err.message);
-            this._scheduleReconnect();
-        });
-
-        req.on('response', (res) => {
-            console.error(`[Tunnel] Échec upgrade HTTP: ${res.statusCode}`);
-            this._scheduleReconnect();
-        });
-
-        req.end();
-    }
-
-    /**
-     * Traite le buffer de données reçues
-     */
-    _processBuffer(buffer, callback) {
-        // Format simple: 4 bytes de longueur + données JSON
-        while (buffer.length >= 4) {
-            const length = buffer.readUInt32BE(0);
-
-            if (buffer.length < 4 + length) {
-                break; // Données incomplètes
-            }
-
-            const data = buffer.slice(4, 4 + length);
-            buffer = buffer.slice(4 + length);
-
+        this.ws.on('message', (data) => {
             try {
-                const message = JSON.parse(data.toString('utf8'));
+                const message = JSON.parse(data.toString());
                 this._handleMessage(message);
             } catch (err) {
                 console.error('[Tunnel] Erreur parsing message:', err.message);
             }
-        }
+        });
 
-        callback(buffer);
-    }
+        this.ws.on('close', (code, reason) => {
+            console.log(`[Tunnel] Connexion fermée (${code}): ${reason || 'pas de raison'}`);
+            this.connected = false;
+            this.authenticated = false;
+            this._stopPing();
+            this._scheduleReconnect();
+        });
 
-    /**
-     * Envoie un message WebSocket
-     */
-    _sendMessage(data) {
-        if (!this.ws || !this.connected) return;
-
-        try {
-            const json = JSON.stringify(data);
-            const payload = Buffer.from(json, 'utf8');
-            const header = Buffer.alloc(4);
-            header.writeUInt32BE(payload.length, 0);
-
-            // Encoder en frame WebSocket
-            const frame = this._encodeWebSocketFrame(Buffer.concat([header, payload]));
-            this.ws.write(frame);
-        } catch (err) {
-            console.error('[Tunnel] Erreur envoi:', err.message);
-        }
-    }
-
-    /**
-     * Encode une frame WebSocket
-     */
-    _encodeWebSocketFrame(data) {
-        const length = data.length;
-        let header;
-
-        if (length < 126) {
-            header = Buffer.alloc(6);
-            header[0] = 0x82; // Binary frame, FIN
-            header[1] = 0x80 | length; // Masked
-        } else if (length < 65536) {
-            header = Buffer.alloc(8);
-            header[0] = 0x82;
-            header[1] = 0x80 | 126;
-            header.writeUInt16BE(length, 2);
-        } else {
-            header = Buffer.alloc(14);
-            header[0] = 0x82;
-            header[1] = 0x80 | 127;
-            header.writeBigUInt64BE(BigInt(length), 2);
-        }
-
-        // Masque
-        const mask = crypto.randomBytes(4);
-        const maskedData = Buffer.alloc(length);
-
-        for (let i = 0; i < length; i++) {
-            maskedData[i] = data[i] ^ mask[i % 4];
-        }
-
-        // Position du masque
-        const maskOffset = header[1] === (0x80 | 126) ? 4 :
-            header[1] === (0x80 | 127) ? 10 : 2;
-        mask.copy(header, maskOffset);
-
-        return Buffer.concat([header, maskedData]);
+        this.ws.on('error', (err) => {
+            console.error('[Tunnel] Erreur WebSocket:', err.message);
+        });
     }
 
     /**
      * Gère les messages reçus
      */
     _handleMessage(message) {
-        switch (message.type) {
-            case 'registered':
-                console.log('[Tunnel] Enregistré avec succès');
-                console.log(`[Tunnel] Domaines: ${message.domains?.join(', ')}`);
-                this.emit('registered', message);
+        const { type, id, payload } = message;
+
+        // Debug: afficher tous les messages reçus
+        console.log('[Tunnel] Message reçu:', type, id ? `(${id.substring(0,8)})` : '');
+
+        switch (type) {
+            case 'auth_challenge':
+                this._handleAuthChallenge(payload);
                 break;
 
-            case 'request':
-                this._handleHttpRequest(message);
+            case 'auth_result':
+            case 'auth_response':
+                // Le serveur peut répondre avec auth_result ou auth_response
+                if (payload.success !== undefined) {
+                    this._handleAuthResult(payload);
+                }
+                break;
+
+            case 'tunnel_registered':
+                console.log('[Tunnel] Tunnels enregistrés:', payload.domains?.join(', '));
+                this.emit('registered', payload);
+                break;
+
+            case 'tunnel_error':
+                console.error('[Tunnel] Erreur tunnel:', payload.message);
+                break;
+
+            case 'http_request':
+                this._handleHttpRequest(id, payload);
+                break;
+
+            case 'http_data':
+                this._handleHttpData(id, payload);
+                break;
+
+            case 'http_end':
+                this._handleHttpEnd(id);
                 break;
 
             case 'pong':
                 // Réponse au ping
                 break;
 
-            case 'error':
-                console.error('[Tunnel] Erreur serveur:', message.message);
-                break;
-
             default:
-                console.log('[Tunnel] Message inconnu:', message.type);
+                console.log('[Tunnel] Message inconnu:', type);
         }
     }
 
     /**
-     * Gère une requête HTTP tunnelée
+     * Gère le challenge d'authentification
      */
-    _handleHttpRequest(message) {
-        const { requestId, method, path, headers, body } = message;
+    _handleAuthChallenge(payload) {
+        const { challenge } = payload;
+        const clientId = this.config.auth.id;
+        const psk = this.config.auth.key;
 
-        const tunnel = this.config.tunnels.find(t => t.domain === message.host);
+        console.log('[Tunnel] Challenge reçu, envoi de la réponse...');
+
+        // Calcul HMAC: challenge + clientId
+        const hmac = crypto.createHmac('sha256', psk);
+        hmac.update(challenge + clientId);
+        const response = hmac.digest('hex');
+
+        this._send('auth_response', {
+            clientId,
+            response
+        });
+    }
+
+    /**
+     * Gère le résultat de l'authentification
+     */
+    _handleAuthResult(payload) {
+        if (payload.success) {
+            console.log('[Tunnel] Authentification réussie');
+            this.authenticated = true;
+            this._startPing();
+            this._registerTunnels();
+            this.emit('authenticated');
+        } else {
+            console.error('[Tunnel] Authentification échouée:', payload.message);
+            this.ws.close();
+        }
+    }
+
+    /**
+     * Enregistre les tunnels
+     */
+    _registerTunnels() {
+        const domains = this.config.tunnels.map(t => t.domain);
+        console.log('[Tunnel] Enregistrement des domaines:', domains.join(', '));
+
+        this._send('tunnel_register', { domains });
+    }
+
+    /**
+     * Gère une requête HTTP entrante
+     */
+    _handleHttpRequest(requestId, payload) {
+        const { method, url, headers, hasBody } = payload;
+
+        console.log(`[Tunnel] HTTP ${method} ${url}`);
+        console.log(`[Tunnel] Headers reçus:`, JSON.stringify(headers, null, 2));
+
+        // Trouver le tunnel correspondant (le VPS envoie x-forwarded-host)
+        const host = headers.host || headers.Host || headers['x-forwarded-host'];
+        const tunnel = this.config.tunnels.find(t => t.domain === host);
         const localHost = tunnel?.localHost || 'localhost';
         const localPort = tunnel?.localPort || this.localPort;
 
+        console.log(`[Tunnel] Proxy vers ${localHost}:${localPort}`);
+
+        // Créer la requête locale
         const options = {
             hostname: localHost,
             port: localPort,
-            method: method,
-            path: path,
-            headers: headers
+            method,
+            path: url,
+            headers: { ...headers, host: `${localHost}:${localPort}` }
         };
 
-        const req = http.request(options, (res) => {
-            let responseBody = [];
+        const proxyReq = http.request(options, (proxyRes) => {
+            console.log(`[Tunnel] Réponse locale: ${proxyRes.statusCode}`);
+            // Envoyer la réponse HTTP avec le MÊME requestId
+            this._send('http_response', {
+                statusCode: proxyRes.statusCode,
+                statusMessage: proxyRes.statusMessage,
+                headers: proxyRes.headers
+            }, requestId);
 
-            res.on('data', (chunk) => {
-                responseBody.push(chunk);
+            // Streamer le body de la réponse
+            proxyRes.on('data', (chunk) => {
+                this._send('http_data', {
+                    data: chunk.toString('base64')
+                }, requestId);
             });
 
-            res.on('end', () => {
-                this._sendMessage({
-                    type: 'response',
-                    requestId,
-                    statusCode: res.statusCode,
-                    headers: res.headers,
-                    body: Buffer.concat(responseBody).toString('base64')
-                });
-            });
-        });
-
-        req.on('error', (err) => {
-            console.error(`[Tunnel] Erreur requête locale: ${err.message}`);
-            this._sendMessage({
-                type: 'response',
-                requestId,
-                statusCode: 502,
-                headers: { 'Content-Type': 'text/plain' },
-                body: Buffer.from(`Bad Gateway: ${err.message}`).toString('base64')
+            proxyRes.on('end', () => {
+                this._send('http_end', {}, requestId);
             });
         });
 
-        if (body) {
-            req.write(Buffer.from(body, 'base64'));
+        proxyReq.on('error', (err) => {
+            console.error(`[Tunnel] Erreur proxy (${requestId}):`, err.message);
+            this._send('http_error', {
+                message: err.message
+            }, requestId);
+        });
+
+        // Stocker la requête pour recevoir le body
+        if (hasBody) {
+            this.pendingRequests.set(requestId, proxyReq);
+        } else {
+            proxyReq.end();
         }
+    }
 
-        req.end();
+    /**
+     * Gère les données HTTP entrantes
+     */
+    _handleHttpData(requestId, payload) {
+        const proxyReq = this.pendingRequests.get(requestId);
+        if (proxyReq && payload.data) {
+            proxyReq.write(Buffer.from(payload.data, 'base64'));
+        }
+    }
+
+    /**
+     * Gère la fin des données HTTP
+     */
+    _handleHttpEnd(requestId) {
+        const proxyReq = this.pendingRequests.get(requestId);
+        if (proxyReq) {
+            proxyReq.end();
+            this.pendingRequests.delete(requestId);
+        }
     }
 
     /**
@@ -319,10 +298,9 @@ class TunnelClient extends EventEmitter {
      */
     _startPing() {
         this._stopPing();
-
         this.pingInterval = setInterval(() => {
-            if (this.connected) {
-                this._sendMessage({ type: 'ping' });
+            if (this.connected && this.authenticated) {
+                this._send('ping', {});
             }
         }, 30000);
     }
@@ -343,12 +321,10 @@ class TunnelClient extends EventEmitter {
     _scheduleReconnect() {
         if (!this.config?.reconnect?.enabled) return;
 
-        this._stopPing();
-
         const { delay, maxDelay, multiplier } = this.config.reconnect;
         const waitTime = Math.min(
-            delay * Math.pow(multiplier, this.reconnectAttempts),
-            maxDelay
+            delay * Math.pow(multiplier || 2, this.reconnectAttempts),
+            maxDelay || 30000
         );
 
         this.reconnectAttempts++;
@@ -372,11 +348,13 @@ class TunnelClient extends EventEmitter {
         }
 
         if (this.ws) {
-            this.ws.destroy();
+            this._send('disconnect', {});
+            this.ws.close();
             this.ws = null;
         }
 
         this.connected = false;
+        this.authenticated = false;
         console.log('[Tunnel] Déconnecté');
     }
 
@@ -387,6 +365,7 @@ class TunnelClient extends EventEmitter {
         return {
             enabled: this.config?.enabled || false,
             connected: this.connected,
+            authenticated: this.authenticated,
             server: this.config?.server?.host || null,
             domains: this.config?.tunnels?.map(t => t.domain) || [],
             reconnectAttempts: this.reconnectAttempts

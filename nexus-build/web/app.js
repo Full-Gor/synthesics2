@@ -7,11 +7,18 @@
 const API = {
     baseUrl: '',
 
+    getToken() {
+        return localStorage.getItem('session_token');
+    },
+
     async request(endpoint, options = {}) {
         const url = `${this.baseUrl}${endpoint}`;
+        const token = this.getToken();
+
         const config = {
             headers: {
                 'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
                 ...options.headers
             },
             ...options
@@ -19,6 +26,13 @@ const API = {
 
         try {
             const response = await fetch(url, config);
+
+            // Redirect to login if unauthorized
+            if (response.status === 401 && !endpoint.includes('/auth/')) {
+                window.location.href = '/login.html';
+                return;
+            }
+
             const data = await response.json();
 
             if (!response.ok) {
@@ -30,6 +44,15 @@ const API = {
             console.error(`API Error: ${endpoint}`, error);
             throw error;
         }
+    },
+
+    // Auth
+    async getMe() {
+        return this.request('/api/auth/me');
+    },
+
+    async logout() {
+        return this.request('/api/auth/logout', { method: 'POST' });
     },
 
     // Builds
@@ -77,7 +100,8 @@ const state = {
     stats: {},
     filter: 'all',
     selectedBuild: null,
-    refreshInterval: null
+    refreshInterval: null,
+    currentUser: null
 };
 
 // === DOM Elements ===
@@ -404,10 +428,15 @@ async function showBuildDetails(id) {
 
             <div class="logs-viewer">
                 <div class="logs-header">
-                    <h4>📜 Logs</h4>
-                    <span>${build.logs?.length || 0} lignes</span>
+                    <h4>Logs</h4>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <span>${build.logs?.length || 0} lignes</span>
+                        <button class="btn btn-secondary btn-sm" onclick="copyLogs('${build.id}')">
+                            Copier
+                        </button>
+                    </div>
                 </div>
-                <div class="logs-content">
+                <div class="logs-content" id="logsContent-${build.id}">
                     ${build.logs?.length ? build.logs.map(log => `
                         <div class="log-line ${log.type}">
                             <span class="log-time">${new Date(log.timestamp).toLocaleTimeString()}</span>
@@ -502,7 +531,7 @@ async function createBuild(formData) {
 // === Health Check ===
 async function showHealthCheck() {
     openModal(elements.healthModal);
-    elements.healthContent.innerHTML = '<div class="loading">Vérification en cours...</div>';
+    elements.healthContent.innerHTML = '<div class="loading">Verification en cours...</div>';
 
     try {
         const health = await API.getHealth();
@@ -513,7 +542,6 @@ async function showHealthCheck() {
 
             return `
                 <div class="health-item ${available ? 'available' : 'unavailable'}">
-                    <div class="health-item-icon">${getToolIcon(name)}</div>
                     <div class="health-item-info">
                         <div class="health-item-name">${formatToolName(name)}</div>
                         <div class="health-item-version">${version}</div>
@@ -524,37 +552,23 @@ async function showHealthCheck() {
         }).join('');
 
         elements.healthContent.innerHTML = `
-            <div style="margin-bottom: 20px; padding: 12px; background: var(--bg-secondary); border-radius: var(--radius-md);">
+            <div class="health-info-box">
                 <p><strong>Version:</strong> ${health.version}</p>
                 <p><strong>Uptime:</strong> ${formatDuration(health.uptime * 1000)}</p>
                 <p><strong>Platform:</strong> ${health.platform}</p>
                 <p><strong>Node.js:</strong> ${health.nodeVersion}</p>
             </div>
-            <h4 style="margin-bottom: 12px;">Outils disponibles</h4>
+            <h4 style="margin-bottom: 12px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;">Outils disponibles</h4>
             <div class="health-grid">${toolsHtml}</div>
         `;
     } catch (error) {
         elements.healthContent.innerHTML = `
             <div class="empty-state">
-                <div class="empty-state-icon">⚠️</div>
-                <p>Erreur lors de la vérification</p>
+                <p>Erreur lors de la verification</p>
                 <p style="font-size: 12px;">${error.message}</p>
             </div>
         `;
     }
-}
-
-function getToolIcon(name) {
-    const icons = {
-        node: '🟢',
-        npm: '📦',
-        git: '🔀',
-        java: '☕',
-        gradle: '🐘',
-        androidSdk: '🤖',
-        flutter: '🐦'
-    };
-    return icons[name] || '🔧';
 }
 
 function formatToolName(name) {
@@ -585,7 +599,10 @@ function setupFilters() {
 // === Event Listeners ===
 function setupEventListeners() {
     // New Build Modal
-    elements.newBuildBtn.addEventListener('click', () => openModal(elements.newBuildModal));
+    elements.newBuildBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        openModal(elements.newBuildModal);
+    });
     elements.closeNewBuildModal.addEventListener('click', () => closeModal(elements.newBuildModal));
     elements.cancelNewBuild.addEventListener('click', () => closeModal(elements.newBuildModal));
 
@@ -599,7 +616,10 @@ function setupEventListeners() {
     elements.closeBuildDetailsModal.addEventListener('click', () => closeModal(elements.buildDetailsModal));
 
     // Health Modal
-    elements.healthCheckBtn.addEventListener('click', showHealthCheck);
+    elements.healthCheckBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        showHealthCheck();
+    });
     elements.closeHealthModal.addEventListener('click', () => closeModal(elements.healthModal));
 
     // Close modals on backdrop click
@@ -629,9 +649,216 @@ function startAutoRefresh() {
     }, 5000);
 }
 
+// === Auth ===
+async function checkAuth() {
+    try {
+        const data = await API.getMe();
+        if (!data || !data.user) {
+            window.location.href = '/login.html';
+            return false;
+        }
+
+        state.currentUser = data.user;
+        updateUserUI();
+        return true;
+    } catch (err) {
+        window.location.href = '/login.html';
+        return false;
+    }
+}
+
+function updateUserUI() {
+    const userInfo = document.getElementById('userInfo');
+    if (userInfo && state.currentUser) {
+        userInfo.innerHTML = `
+            <span class="user-name">${state.currentUser.username}</span>
+            ${state.currentUser.role === 'admin' ? `
+                <a href="/admin.html" class="btn btn-secondary btn-sm">Admin</a>
+            ` : ''}
+            <button class="btn btn-secondary btn-sm" id="logoutBtn">Deconnexion</button>
+        `;
+
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
+            await API.logout();
+            localStorage.removeItem('session_token');
+            localStorage.removeItem('user');
+            window.location.href = '/login.html';
+        });
+
+        // Afficher les boutons admin
+        if (state.currentUser.role === 'admin') {
+            document.querySelectorAll('.admin-only').forEach(el => {
+                el.style.display = '';
+            });
+        }
+    }
+}
+
+// === Announcements ===
+async function loadAnnouncements() {
+    try {
+        const data = await API.request('/api/announcements');
+        const section = document.getElementById('announcementsSection');
+        const list = document.getElementById('announcementsList');
+
+        if (!data || !data.announcements || data.announcements.length === 0) {
+            section.style.display = 'none';
+            return;
+        }
+
+        section.style.display = 'block';
+        list.innerHTML = data.announcements.map(ann => `
+            <div class="announcement-banner ${ann.type}">
+                <h4>${escapeHtml(ann.title)}</h4>
+                <p>${escapeHtml(ann.content)}</p>
+                <small>Par ${ann.authorUsername} - ${formatDate(ann.createdAt)}</small>
+            </div>
+        `).join('');
+    } catch (error) {
+        console.error('Failed to load announcements:', error);
+    }
+}
+
+// === Chat Widget ===
+let chatAdminId = null;
+let chatOpen = false;
+
+async function initChat() {
+    if (state.currentUser.role === 'admin') return;
+
+    // Find admin to chat with
+    try {
+        const convData = await API.request('/api/messages/conversations');
+        const conversations = convData?.conversations || [];
+
+        // Check for unread messages
+        const unreadData = await API.request('/api/messages/unread');
+        const unreadCount = unreadData?.unread || 0;
+
+        const chatWidget = document.getElementById('chatWidget');
+        chatWidget.style.display = 'block';
+
+        if (unreadCount > 0) {
+            const badge = document.getElementById('chatUnreadBadge');
+            badge.textContent = unreadCount;
+            badge.style.display = 'block';
+        }
+
+        // Get admin id from conversations or we'll find it
+        if (conversations.length > 0) {
+            chatAdminId = conversations[0].userId;
+        }
+    } catch (err) {
+        console.error('Chat init error:', err);
+    }
+}
+
+function toggleChat() {
+    const chatBox = document.getElementById('chatBox');
+    chatOpen = !chatOpen;
+    chatBox.classList.toggle('active', chatOpen);
+
+    if (chatOpen) {
+        loadChatMessages();
+    }
+}
+
+async function loadChatMessages() {
+    if (!chatAdminId) {
+        // Find first admin user
+        try {
+            const convData = await API.request('/api/messages/conversations');
+            if (convData?.conversations?.length > 0) {
+                chatAdminId = convData.conversations[0].userId;
+            } else {
+                // No conversation yet, we'll send to first admin that responds
+                return;
+            }
+        } catch (err) {
+            return;
+        }
+    }
+
+    try {
+        const data = await API.request(`/api/messages/${chatAdminId}`);
+        const container = document.getElementById('chatBoxMessages');
+
+        if (!data || !data.messages || data.messages.length === 0) {
+            container.innerHTML = `
+                <p style="text-align: center; color: var(--text-secondary); padding: 20px;">
+                    Envoyez un message a l'administrateur
+                </p>
+            `;
+            return;
+        }
+
+        container.innerHTML = data.messages.map(msg => `
+            <div class="chat-message ${msg.fromId === state.currentUser.id ? 'sent' : 'received'}">
+                <div>${escapeHtml(msg.content)}</div>
+                <div class="chat-message-time">${new Date(msg.createdAt).toLocaleTimeString('fr-FR')}</div>
+            </div>
+        `).join('');
+
+        container.scrollTop = container.scrollHeight;
+
+        // Clear badge
+        document.getElementById('chatUnreadBadge').style.display = 'none';
+    } catch (err) {
+        console.error('Load chat messages error:', err);
+    }
+}
+
+async function sendChatMessage() {
+    const input = document.getElementById('chatInput');
+    const content = input.value.trim();
+
+    if (!content) return;
+
+    // If no admin id yet, find one
+    if (!chatAdminId) {
+        try {
+            // Get conversations to find an admin
+            const convData = await API.request('/api/messages/conversations');
+            if (convData?.conversations?.length > 0) {
+                chatAdminId = convData.conversations[0].userId;
+            } else {
+                // Try to find an admin user (this is a workaround)
+                showToast('Aucun administrateur disponible', 'error');
+                return;
+            }
+        } catch (err) {
+            showToast('Erreur de connexion', 'error');
+            return;
+        }
+    }
+
+    try {
+        await API.request(`/api/messages/${chatAdminId}`, {
+            method: 'POST',
+            body: JSON.stringify({ content })
+        });
+
+        input.value = '';
+        await loadChatMessages();
+    } catch (err) {
+        showToast('Erreur d\'envoi', 'error');
+    }
+}
+
+// Chat input enter key
+document.getElementById('chatInput')?.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        sendChatMessage();
+    }
+});
+
 // === Initialize ===
 async function init() {
     console.log('Synthesics2 - Initializing...');
+
+    // Check authentication first
+    const authenticated = await checkAuth();
+    if (!authenticated) return;
 
     setupEventListeners();
     setupFilters();
@@ -640,17 +867,70 @@ async function init() {
     await Promise.all([
         loadBuilds(),
         updateStats(),
-        updateTunnelStatus()
+        updateTunnelStatus(),
+        loadAnnouncements()
     ]);
+
+    // Init chat for non-admin users
+    if (state.currentUser.role !== 'admin') {
+        initChat();
+    }
 
     // Start auto refresh
     startAutoRefresh();
 
+    // Refresh chat periodically
+    setInterval(() => {
+        if (chatOpen && chatAdminId) {
+            loadChatMessages();
+        }
+    }, 5000);
+
     console.log('Synthesics2 - Ready!');
 }
 
-// Expose deleteBuild globally for inline onclick
+// === Copy Logs ===
+async function copyLogs(buildId) {
+    try {
+        const build = await API.getBuild(buildId);
+        if (!build.logs || build.logs.length === 0) {
+            showToast('Aucun log a copier', 'info');
+            return;
+        }
+
+        const logsText = build.logs.map(log =>
+            `[${new Date(log.timestamp).toLocaleTimeString()}] ${log.message}`
+        ).join('\n');
+
+        await navigator.clipboard.writeText(logsText);
+        showToast('Logs copies dans le presse-papiers', 'success');
+    } catch (error) {
+        showToast('Erreur lors de la copie', 'error');
+    }
+}
+
+// === Delete All Builds ===
+async function deleteAllBuilds() {
+    if (!confirm('Supprimer TOUS les builds ? Cette action est irreversible.')) {
+        return;
+    }
+
+    try {
+        await API.request('/api/builds', { method: 'DELETE' });
+        showToast('Tous les builds supprimes', 'success');
+        loadBuilds();
+        updateStats();
+    } catch (error) {
+        showToast('Erreur lors de la suppression', 'error');
+    }
+}
+
+// Expose functions globally for inline onclick
 window.deleteBuild = deleteBuild;
+window.copyLogs = copyLogs;
+window.deleteAllBuilds = deleteAllBuilds;
+window.toggleChat = toggleChat;
+window.sendChatMessage = sendChatMessage;
 
 // Start the app
 document.addEventListener('DOMContentLoaded', init);

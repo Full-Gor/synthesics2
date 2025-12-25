@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(powershell -Command:*)",
+      "Bash(\"C:/Users/almou/AppData/Local/Android/Sdk/platform-tools/adb.exe\" version)",
+      "Bash(\"C:/Program Files/Eclipse Adoptium/jdk-25.0.1.8-hotspot/bin/java.exe\" -version)",
+      "Bash(ssh:*)"
+    ]
+  }
+}

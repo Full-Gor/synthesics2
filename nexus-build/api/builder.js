@@ -217,6 +217,137 @@ class Builder {
     }
 
     /**
+     * Détecte les versions des dépendances du projet
+     */
+    _detectVersions(projectDir, framework) {
+        const versions = {
+            framework: null,
+            reactNative: null,
+            expo: null,
+            expoSdk: null,
+            flutter: null,
+            dart: null,
+            node: null,
+            gradle: null,
+            agp: null
+        };
+
+        try {
+            if (framework === 'flutter') {
+                // Lire pubspec.yaml pour Flutter
+                const pubspecPath = path.join(projectDir, 'pubspec.yaml');
+                if (fs.existsSync(pubspecPath)) {
+                    const pubspec = fs.readFileSync(pubspecPath, 'utf8');
+
+                    // Extraire SDK version
+                    const sdkMatch = pubspec.match(/sdk:\s*['"]?>=?(\d+\.\d+\.\d+)/);
+                    if (sdkMatch) {
+                        versions.dart = sdkMatch[1];
+                    }
+
+                    // Extraire Flutter version depuis environment
+                    const flutterMatch = pubspec.match(/flutter:\s*['"]?>=?(\d+\.\d+\.\d+)/);
+                    if (flutterMatch) {
+                        versions.flutter = flutterMatch[1];
+                    }
+                }
+            } else {
+                // React Native / Expo
+                const packagePath = path.join(projectDir, 'package.json');
+                if (fs.existsSync(packagePath)) {
+                    const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+
+                    // React Native version
+                    if (pkg.dependencies?.['react-native']) {
+                        versions.reactNative = pkg.dependencies['react-native'].replace(/[\^~]/g, '');
+                    }
+
+                    // Expo version
+                    if (pkg.dependencies?.expo) {
+                        versions.expo = pkg.dependencies.expo.replace(/[\^~]/g, '');
+                    }
+
+                    // Node engine
+                    if (pkg.engines?.node) {
+                        versions.node = pkg.engines.node;
+                    }
+                }
+
+                // Expo SDK version depuis app.json
+                const appJsonPath = path.join(projectDir, 'app.json');
+                if (fs.existsSync(appJsonPath)) {
+                    const appJson = JSON.parse(fs.readFileSync(appJsonPath, 'utf8'));
+                    if (appJson.expo?.sdkVersion) {
+                        versions.expoSdk = appJson.expo.sdkVersion;
+                    }
+                }
+
+                // Gradle version
+                const gradleWrapperPath = path.join(projectDir, 'android', 'gradle', 'wrapper', 'gradle-wrapper.properties');
+                if (fs.existsSync(gradleWrapperPath)) {
+                    const gradleWrapper = fs.readFileSync(gradleWrapperPath, 'utf8');
+                    const gradleMatch = gradleWrapper.match(/gradle-(\d+\.\d+(?:\.\d+)?)/);
+                    if (gradleMatch) {
+                        versions.gradle = gradleMatch[1];
+                    }
+                }
+
+                // Android Gradle Plugin version
+                const buildGradlePath = path.join(projectDir, 'android', 'build.gradle');
+                if (fs.existsSync(buildGradlePath)) {
+                    const buildGradle = fs.readFileSync(buildGradlePath, 'utf8');
+                    const agpMatch = buildGradle.match(/com\.android\.tools\.build:gradle:(\d+\.\d+\.\d+)/);
+                    if (agpMatch) {
+                        versions.agp = agpMatch[1];
+                    }
+                }
+            }
+        } catch (err) {
+            // Ignorer les erreurs de parsing
+        }
+
+        return versions;
+    }
+
+    /**
+     * Vérifie la compatibilité des versions
+     */
+    _checkCompatibility(versions, buildId) {
+        const compatibility = this.config.compatibility || {};
+        const warnings = [];
+
+        // Vérifier Expo SDK
+        if (versions.expoSdk && compatibility.expo?.versions) {
+            if (!compatibility.expo.versions.includes(versions.expoSdk)) {
+                warnings.push(`Expo SDK ${versions.expoSdk} n'est pas dans la liste des versions testées`);
+            }
+        }
+
+        // Vérifier React Native
+        if (versions.reactNative && compatibility.reactNative?.versions) {
+            const rnVersion = versions.reactNative.split('.').slice(0, 2).join('.');
+            if (!compatibility.reactNative.versions.includes(rnVersion)) {
+                warnings.push(`React Native ${versions.reactNative} n'est pas dans la liste des versions testées`);
+            }
+        }
+
+        // Vérifier Flutter
+        if (versions.flutter && compatibility.flutter?.versions) {
+            const flutterMajorMinor = versions.flutter.split('.').slice(0, 2).join('.');
+            if (!compatibility.flutter.versions.includes(flutterMajorMinor)) {
+                warnings.push(`Flutter ${versions.flutter} n'est pas dans la liste des versions testées`);
+            }
+        }
+
+        // Logger les warnings
+        for (const warning of warnings) {
+            this._log(buildId, `⚠️ ATTENTION: ${warning}`, 'warning');
+        }
+
+        return warnings;
+    }
+
+    /**
      * Recherche récursive du projet dans les sous-dossiers
      */
     _findProject(baseDir, maxDepth = 3) {
@@ -528,10 +659,30 @@ class Builder {
                 this._log(buildId, `Framework spécifié: ${framework}`);
             }
 
+            // Détecter les versions
+            const versions = this._detectVersions(projectDir, framework);
+            versions.framework = framework;
+
+            this._log(buildId, '─'.repeat(50));
+            this._log(buildId, 'VERSIONS DÉTECTÉES:');
+            if (versions.reactNative) this._log(buildId, `  React Native: ${versions.reactNative}`);
+            if (versions.expo) this._log(buildId, `  Expo: ${versions.expo}`);
+            if (versions.expoSdk) this._log(buildId, `  Expo SDK: ${versions.expoSdk}`);
+            if (versions.flutter) this._log(buildId, `  Flutter: ${versions.flutter}`);
+            if (versions.dart) this._log(buildId, `  Dart: ${versions.dart}`);
+            if (versions.gradle) this._log(buildId, `  Gradle: ${versions.gradle}`);
+            if (versions.agp) this._log(buildId, `  Android Gradle Plugin: ${versions.agp}`);
+            if (versions.node) this._log(buildId, `  Node.js requis: ${versions.node}`);
+            this._log(buildId, '─'.repeat(50));
+
+            // Vérifier la compatibilité
+            this._checkCompatibility(versions, buildId);
+
             // Mettre à jour le build avec les infos détectées
             this.queue.update(buildId, {
                 detectedFramework: framework,
-                projectPath: projectDir
+                projectPath: projectDir,
+                detectedVersions: versions
             });
 
             // 3. Build selon le framework
@@ -563,7 +714,8 @@ class Builder {
                 apkPath: apk.filename,
                 apkSize: apk.size,
                 detectedFramework: framework,
-                projectPath: projectDir
+                projectPath: projectDir,
+                detectedVersions: versions
             });
 
         } catch (err) {

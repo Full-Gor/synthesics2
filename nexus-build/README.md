@@ -244,6 +244,99 @@ nexus-build/
 | **React Native** | `package.json` avec `react-native` | Gradle |
 | **Flutter** | `pubspec.yaml` | `flutter build apk` |
 
+## Versions supportées
+
+### Expo SDK
+
+| Version | React Native | Architecture | Status |
+|---------|--------------|--------------|--------|
+| **SDK 50** | 0.73 | Legacy | Stable |
+| **SDK 51** | 0.74 | Legacy | Stable |
+| **SDK 52** | 0.76 | New Architecture (default) | **Recommandé** |
+| **SDK 53** | 0.77+ | New Architecture | Stable |
+| **SDK 54** | 0.79+ | New Architecture | Latest |
+
+### React Native
+
+| Version | Architecture | Expo SDK | Status |
+|---------|--------------|----------|--------|
+| 0.72 | Legacy | - | Stable |
+| 0.73 | Legacy | SDK 50 | Stable |
+| 0.74 | Legacy | SDK 51 | Stable |
+| 0.75 | New (opt-in) | - | Stable |
+| **0.76** | New (default) | SDK 52 | **Recommandé** |
+| 0.77 | New | SDK 53 | Stable |
+| 0.78 | New | - | Stable |
+| 0.79 | New | SDK 54 | Stable |
+| 0.80 | New | - | Stable |
+| 0.81 | New | - | Stable |
+| 0.82 | New (only) | - | Hermes V1 |
+| 0.83 | New (only) | - | Latest |
+
+### Flutter
+
+| Version | Dart | Features | Status |
+|---------|------|----------|--------|
+| 3.16 | 3.2 | Baseline stable | Legacy |
+| 3.19 | 3.3 | Improved DevTools | Stable |
+| 3.22 | 3.4 | WebAssembly support | Stable |
+| 3.24 | 3.5 | Enhanced performance | Stable |
+| **3.27** | 3.6 | Pub workspaces, AI Toolkit | **Recommandé** |
+
+### Node.js LTS
+
+| Version | Codename | End of Life | Status |
+|---------|----------|-------------|--------|
+| 18.x | Hydrogen | Avril 2025 | Maintenance |
+| 20.x | Iron | Avril 2026 | Maintenance |
+| **22.x** | Jod | Avril 2027 | **Active LTS** |
+
+### Java JDK
+
+| Version | AGP Compatible | Status |
+|---------|----------------|--------|
+| 11 | AGP 7.x | Legacy |
+| **17** | AGP 8.x+ | **Recommandé** |
+| 21 | AGP 8.x+ | Latest LTS |
+
+### Android Gradle Plugin (AGP)
+
+| Version | Gradle | Java | Status |
+|---------|--------|------|--------|
+| 7.4 | 7.5+ | 11+ | Legacy |
+| 8.0 | 8.0+ | 17+ | Stable |
+| 8.1 | 8.0+ | 17+ | Stable |
+| **8.2** | 8.2+ | 17+ | **Recommandé** |
+| 8.3 | 8.4+ | 17+ | Stable |
+| 8.4 | 8.6+ | 17+ | Latest |
+| 8.5 | 8.7+ | 17+ | Kotlin 2.0 |
+| 8.7 | 8.9+ | 17+ | Cutting edge |
+
+### Android SDK
+
+| Composant | Versions supportées | Recommandé |
+|-----------|---------------------|------------|
+| Compile SDK | 33, 34, 35 | **34** |
+| Target SDK | 33, 34, 35 | **34** |
+| Min SDK | 21, 23, 24, 26 | **24** |
+| Build Tools | 33.0.2, 34.0.0, 35.0.0 | **34.0.0** |
+
+### Matrice de compatibilité
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    MATRICE DE COMPATIBILITÉ                      │
+├─────────────────────────────────────────────────────────────────┤
+│  Expo SDK 50  ←→  RN 0.73  ←→  Node 18/20/22  ←→  Java 17      │
+│  Expo SDK 51  ←→  RN 0.74  ←→  Node 18/20/22  ←→  Java 17      │
+│  Expo SDK 52  ←→  RN 0.76  ←→  Node 20/22     ←→  Java 17      │
+│  Expo SDK 53  ←→  RN 0.77  ←→  Node 20/22     ←→  Java 17/21   │
+│  Expo SDK 54  ←→  RN 0.79  ←→  Node 22        ←→  Java 17/21   │
+├─────────────────────────────────────────────────────────────────┤
+│  Flutter 3.16-3.27  ←→  Dart 3.2-3.6  ←→  Java 11/17/21        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
 ## Dépannage
 
 ### Build échoue avec "ANDROID_HOME not set"

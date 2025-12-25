@@ -3,10 +3,114 @@
     "port": 3001,
     "host": "0.0.0.0"
   },
+  "compatibility": {
+    "expo": {
+      "versions": ["50", "51", "52", "53", "54"],
+      "recommended": "52",
+      "notes": {
+        "50": "SDK 50 - React Native 0.73, stable",
+        "51": "SDK 51 - React Native 0.74, stable",
+        "52": "SDK 52 - React Native 0.76, New Architecture default",
+        "53": "SDK 53 - React Native 0.77+, latest stable",
+        "54": "SDK 54 - React Native 0.79+, cutting edge"
+      }
+    },
+    "reactNative": {
+      "versions": ["0.72", "0.73", "0.74", "0.75", "0.76", "0.77", "0.78", "0.79", "0.80", "0.81", "0.82", "0.83"],
+      "recommended": "0.76",
+      "notes": {
+        "0.72": "Legacy architecture, stable",
+        "0.73": "Legacy architecture, Expo SDK 50",
+        "0.74": "Legacy architecture, Expo SDK 51",
+        "0.75": "New Architecture opt-in",
+        "0.76": "New Architecture default, Expo SDK 52",
+        "0.77": "New Architecture, Expo SDK 53",
+        "0.78": "New Architecture, improved performance",
+        "0.79": "New Architecture, Expo SDK 54",
+        "0.80": "New Architecture, latest features",
+        "0.81": "New Architecture, Hermes improvements",
+        "0.82": "New Architecture only, Hermes V1 experimental",
+        "0.83": "Latest stable, full New Architecture"
+      }
+    },
+    "flutter": {
+      "versions": ["3.16", "3.19", "3.22", "3.24", "3.27"],
+      "recommended": "3.27",
+      "notes": {
+        "3.16": "Dart 3.2, stable baseline",
+        "3.19": "Dart 3.3, improved DevTools",
+        "3.22": "Dart 3.4, WebAssembly support",
+        "3.24": "Dart 3.5, enhanced performance",
+        "3.27": "Dart 3.6, pub workspaces, AI Toolkit"
+      }
+    },
+    "node": {
+      "versions": ["18", "20", "22"],
+      "recommended": "22",
+      "lts": {
+        "18": { "codename": "Hydrogen", "endOfLife": "2025-04-30" },
+        "20": { "codename": "Iron", "endOfLife": "2026-04-30" },
+        "22": { "codename": "Jod", "endOfLife": "2027-04-30" }
+      },
+      "notes": {
+        "18": "Maintenance LTS, legacy support",
+        "20": "Maintenance LTS, widely compatible",
+        "22": "Active LTS, recommended for new projects"
+      }
+    },
+    "java": {
+      "versions": ["11", "17", "21"],
+      "recommended": "17",
+      "notes": {
+        "11": "LTS, legacy Android builds",
+        "17": "LTS, required for AGP 8+, recommended",
+        "21": "LTS, latest features"
+      }
+    },
+    "gradle": {
+      "versions": ["7.6", "8.0", "8.2", "8.4", "8.5", "8.7", "8.10"],
+      "recommended": "8.5",
+      "notes": {
+        "7.6": "Legacy, Java 11 compatible",
+        "8.0": "Major update, improved caching",
+        "8.2": "Stable, wide compatibility",
+        "8.4": "Performance improvements",
+        "8.5": "Recommended for AGP 8.2+",
+        "8.7": "Latest stable",
+        "8.10": "Cutting edge"
+      }
+    },
+    "androidGradlePlugin": {
+      "versions": ["7.4", "8.0", "8.1", "8.2", "8.3", "8.4", "8.5", "8.7"],
+      "recommended": "8.2",
+      "notes": {
+        "7.4": "Legacy, Java 11 compatible",
+        "8.0": "Java 17 required",
+        "8.1": "Improved build times",
+        "8.2": "Stable, recommended",
+        "8.3": "Performance improvements",
+        "8.4": "Latest stable",
+        "8.5": "Kotlin 2.0 support",
+        "8.7": "Cutting edge"
+      }
+    },
+    "androidSdk": {
+      "compileSdk": ["33", "34", "35"],
+      "targetSdk": ["33", "34", "35"],
+      "minSdk": ["21", "23", "24", "26"],
+      "buildTools": ["33.0.2", "34.0.0", "35.0.0"],
+      "recommended": {
+        "compileSdk": "34",
+        "targetSdk": "34",
+        "minSdk": "24",
+        "buildTools": "34.0.0"
+      }
+    }
+  },
   "paths": {
-    "androidSdk": "C:\\Users\\<USER>\\AppData\\Local\\Android\\Sdk",
-    "flutterSdk": "C:\\Users\\<USER>\\flutter",
-    "javaHome": "C:\\Program Files\\Java\\jdk-17"
+    "androidSdk": "C:\\Users\\almou\\AppData\\Local\\Android\\Sdk",
+    "flutterSdk": "C:\\Users\\almou\\flutter",
+    "javaHome": "C:\\Program Files\\Eclipse Adoptium\\jdk-25.0.1.8-hotspot"
   },
   "storage": {
     "builds": "./storage/builds",
@@ -32,13 +136,13 @@
     "enabled": true,
     "server": {
       "host": "nexuspace.duckdns.org",
-      "port": 443,
-      "tls": true,
-      "rejectUnauthorized": true
+      "port": 4443,
+      "tls": false,
+      "rejectUnauthorized": false
     },
     "auth": {
-      "id": "nexusbuild-client-2",
-      "key": "YOUR_PSK_KEY_HERE"
+      "id": "nexusbuild-client",
+      "key": "60198566c0e2e6bae281b21cd217abcfb4b661ca2aa1a0879f7721d5139ffac7"
     },
     "tunnels": [
       {

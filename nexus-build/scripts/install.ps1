@@ -111,34 +111,118 @@ try {
     exit 1
 }
 
-# Check JAVA_HOME
+# Check and Configure JAVA_HOME
 Write-Step "Verification de JAVA_HOME..."
-if ($env:JAVA_HOME) {
-    Write-Success "JAVA_HOME defini: $env:JAVA_HOME"
-} else {
-    Write-Error "JAVA_HOME non defini"
-    Write-Info "Definissez la variable d'environnement JAVA_HOME"
-    Write-Info "Exemple: C:\Program Files\Java\jdk-17"
+$javaHome = $null
+
+# Detect Java installation path
+$javaPaths = @(
+    "$env:ProgramFiles\Eclipse Adoptium",
+    "$env:ProgramFiles\Java",
+    "$env:ProgramFiles\Microsoft\jdk-*",
+    "$env:ProgramFiles\Zulu"
+)
+
+foreach ($basePath in $javaPaths) {
+    if (Test-Path $basePath) {
+        $jdkDirs = Get-ChildItem -Path $basePath -Directory -ErrorAction SilentlyContinue |
+                   Where-Object { $_.Name -match "jdk" } |
+                   Sort-Object Name -Descending
+        if ($jdkDirs) {
+            $javaHome = $jdkDirs[0].FullName
+            break
+        }
+    }
 }
 
-# Check Android SDK
+if ($env:JAVA_HOME -and (Test-Path $env:JAVA_HOME)) {
+    Write-Success "JAVA_HOME defini: $env:JAVA_HOME"
+} elseif ($javaHome) {
+    Write-Info "Java detecte: $javaHome"
+    Write-Step "Configuration de JAVA_HOME..."
+    [Environment]::SetEnvironmentVariable("JAVA_HOME", $javaHome, "User")
+    $env:JAVA_HOME = $javaHome
+    Write-Success "JAVA_HOME configure: $javaHome"
+} else {
+    Write-Error "Java non trouve"
+    Write-Info "Installez JDK 17+ depuis https://adoptium.net"
+}
+
+# Check and Configure Android SDK
 Write-Step "Verification du Android SDK..."
 $androidSdkPath = "$env:USERPROFILE\AppData\Local\Android\Sdk"
+
 if (Test-Path $androidSdkPath) {
     Write-Success "Android SDK trouve: $androidSdkPath"
+
+    # Check build-tools version
+    $buildToolsDir = "$androidSdkPath\build-tools"
+    if (Test-Path $buildToolsDir) {
+        $btVersions = Get-ChildItem -Path $buildToolsDir -Directory | Sort-Object Name -Descending
+        if ($btVersions) {
+            Write-Info "Build Tools: $($btVersions[0].Name)"
+        }
+    }
+
+    # Check platforms
+    $platformsDir = "$androidSdkPath\platforms"
+    if (Test-Path $platformsDir) {
+        $platforms = Get-ChildItem -Path $platformsDir -Directory | Sort-Object Name -Descending
+        if ($platforms) {
+            Write-Info "Platform: $($platforms[0].Name)"
+        }
+    }
 } else {
     Write-Error "Android SDK non trouve dans $androidSdkPath"
     Write-Info "Installez Android Studio et le SDK depuis https://developer.android.com/studio"
     Write-Info "Ou executez: .\scripts\setup-sdk.ps1"
 }
 
-# Check ANDROID_HOME
-Write-Step "Verification de ANDROID_HOME..."
-if ($env:ANDROID_HOME) {
-    Write-Success "ANDROID_HOME defini: $env:ANDROID_HOME"
+# Configure ANDROID_HOME and ANDROID_SDK_ROOT
+Write-Step "Configuration des variables Android..."
+
+if (Test-Path $androidSdkPath) {
+    if (!$env:ANDROID_HOME -or $env:ANDROID_HOME -ne $androidSdkPath) {
+        [Environment]::SetEnvironmentVariable("ANDROID_HOME", $androidSdkPath, "User")
+        $env:ANDROID_HOME = $androidSdkPath
+        Write-Success "ANDROID_HOME configure: $androidSdkPath"
+    } else {
+        Write-Success "ANDROID_HOME deja defini: $env:ANDROID_HOME"
+    }
+
+    if (!$env:ANDROID_SDK_ROOT -or $env:ANDROID_SDK_ROOT -ne $androidSdkPath) {
+        [Environment]::SetEnvironmentVariable("ANDROID_SDK_ROOT", $androidSdkPath, "User")
+        $env:ANDROID_SDK_ROOT = $androidSdkPath
+        Write-Success "ANDROID_SDK_ROOT configure: $androidSdkPath"
+    }
+
+    # Add to PATH if not already present
+    Write-Step "Configuration du PATH..."
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    $pathsToAdd = @(
+        "$androidSdkPath\platform-tools",
+        "$androidSdkPath\cmdline-tools\latest\bin",
+        "$androidSdkPath\emulator"
+    )
+
+    $pathModified = $false
+    foreach ($pathToAdd in $pathsToAdd) {
+        if ((Test-Path $pathToAdd) -and ($userPath -notlike "*$pathToAdd*")) {
+            $userPath = "$pathToAdd;$userPath"
+            $pathModified = $true
+            Write-Info "Ajoute au PATH: $pathToAdd"
+        }
+    }
+
+    if ($pathModified) {
+        [Environment]::SetEnvironmentVariable("Path", $userPath, "User")
+        $env:Path = "$userPath;$env:Path"
+        Write-Success "PATH mis a jour"
+    } else {
+        Write-Info "PATH deja configure"
+    }
 } else {
-    Write-Error "ANDROID_HOME non defini"
-    Write-Info "Definissez la variable d'environnement ANDROID_HOME"
+    Write-Error "Impossible de configurer ANDROID_HOME - SDK non trouve"
 }
 
 # ============================================================================
@@ -208,26 +292,79 @@ Write-Host ""
 Write-Host "  Dashboard: http://localhost:3001" -ForegroundColor Green
 Write-Host ""
 
-# Check for missing requirements
-$hasWarnings = $false
+# Verify final configuration
+Write-Host ""
+Write-Host "  Configuration finale:" -ForegroundColor White
+Write-Host ""
 
-if (!$env:ANDROID_HOME) {
-    Write-Host ""
-    Write-Host "  [!] ATTENTION: ANDROID_HOME non defini" -ForegroundColor Yellow
-    $hasWarnings = $true
+if ($env:JAVA_HOME) {
+    Write-Host "    JAVA_HOME:        $env:JAVA_HOME" -ForegroundColor Green
+} else {
+    Write-Host "    JAVA_HOME:        [NON DEFINI]" -ForegroundColor Red
 }
 
-if (!$env:JAVA_HOME) {
-    Write-Host "  [!] ATTENTION: JAVA_HOME non defini" -ForegroundColor Yellow
-    $hasWarnings = $true
+if ($env:ANDROID_HOME) {
+    Write-Host "    ANDROID_HOME:     $env:ANDROID_HOME" -ForegroundColor Green
+} else {
+    Write-Host "    ANDROID_HOME:     [NON DEFINI]" -ForegroundColor Red
 }
 
-if ($hasWarnings) {
-    Write-Host ""
-    Write-Host "  Definissez les variables d'environnement manquantes pour" -ForegroundColor Yellow
-    Write-Host "  que les builds fonctionnent correctement." -ForegroundColor Yellow
+if ($env:ANDROID_SDK_ROOT) {
+    Write-Host "    ANDROID_SDK_ROOT: $env:ANDROID_SDK_ROOT" -ForegroundColor Green
+} else {
+    Write-Host "    ANDROID_SDK_ROOT: [NON DEFINI]" -ForegroundColor Red
+}
+
+Write-Host ""
+
+# Check if restart needed
+$restartNeeded = $false
+if (!$env:ANDROID_HOME -or !$env:JAVA_HOME) {
+    Write-Host "  [!] ATTENTION: Certaines variables ne sont pas definies" -ForegroundColor Yellow
+    Write-Host "      Verifiez l'installation des prerequis." -ForegroundColor Yellow
+    $restartNeeded = $true
+} else {
+    Write-Host "  [i] Les variables d'environnement ont ete configurees." -ForegroundColor Cyan
+    Write-Host "      Redemarrez votre terminal pour appliquer les changements." -ForegroundColor Cyan
+    $restartNeeded = $true
 }
 
 Write-Host ""
 Write-Host "================================================================" -ForegroundColor Cyan
+Write-Host ""
+
+# Offer to test configuration
+Write-Host "  Voulez-vous tester la configuration maintenant? (O/N)" -ForegroundColor White
+$response = Read-Host "  "
+if ($response -eq "O" -or $response -eq "o") {
+    Write-Host ""
+    Write-Step "Test de la configuration..."
+
+    # Test adb
+    try {
+        $adbPath = "$androidSdkPath\platform-tools\adb.exe"
+        if (Test-Path $adbPath) {
+            $adbVersion = & $adbPath version 2>&1 | Select-Object -First 1
+            Write-Success "ADB: $adbVersion"
+        }
+    } catch {
+        Write-Error "ADB non accessible"
+    }
+
+    # Test java
+    try {
+        if ($env:JAVA_HOME) {
+            $javaExe = "$env:JAVA_HOME\bin\java.exe"
+            if (Test-Path $javaExe) {
+                $javaVer = & $javaExe -version 2>&1 | Select-Object -First 1
+                Write-Success "Java: $javaVer"
+            }
+        }
+    } catch {
+        Write-Error "Java non accessible"
+    }
+
+    Write-Host ""
+}
+
 Write-Host ""
