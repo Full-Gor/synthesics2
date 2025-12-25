@@ -133,7 +133,7 @@ body {
 }
 
 .logo-version {
-    color: var(--accent-success);
+    color: inherit;
     font-weight: 700;
 }
 
@@ -312,7 +312,6 @@ body {
 .main-nav a.active {
     color: #fff;
     background: rgba(255, 255, 255, 0.15);
-    border-bottom-color: var(--accent-success);
 }
 
 .main-nav a.nav-highlight {
