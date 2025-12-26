@@ -184,11 +184,11 @@ async function handleRequest(req, res) {
 
         if (method === 'POST' && pathname === '/api/auth/register') {
             const body = await parseBody(req);
-            if (!body.username || !body.email || !body.password) {
-                return sendError(res, 'Tous les champs sont requis', 400);
+            if (!body.username || !body.password) {
+                return sendError(res, 'Pseudo et mot de passe requis', 400);
             }
             try {
-                const user = db.register(body.username, body.email, body.password);
+                const user = db.register(body.username, body.password);
                 db.addLog('register', user.id, body.username, getClientIP(req));
                 return sendJson(res, { message: 'Inscription réussie', user }, 201);
             } catch (err) {
@@ -233,6 +233,7 @@ async function handleRequest(req, res) {
         if (method === 'GET' && pathname === '/api/health') {
             const tools = await builder.checkTools();
             const tunnelStatus = tunnel.getStatus();
+            const powerStats = builder.getPowerStats();
             return sendJson(res, {
                 status: 'ok',
                 version: '1.0.0',
@@ -240,7 +241,8 @@ async function handleRequest(req, res) {
                 platform: process.platform,
                 nodeVersion: process.version,
                 tools,
-                tunnel: tunnelStatus
+                tunnel: tunnelStatus,
+                power: powerStats
             });
         }
 
@@ -299,6 +301,12 @@ async function handleRequest(req, res) {
             return sendJson(res, { users });
         }
 
+        // Utilisateurs en attente de validation
+        if (method === 'GET' && pathname === '/api/admin/users/pending') {
+            const pending = db.getPendingUsers();
+            return sendJson(res, { users: pending });
+        }
+
         params = matchRoute('/api/admin/users/:id', pathname);
         if (method === 'GET' && params) {
             const user = db.getUser(params.id);
@@ -306,6 +314,17 @@ async function handleRequest(req, res) {
             const activity = db.getUserActivity(params.id);
             const userBuilds = queue.list({ userId: params.id });
             return sendJson(res, { user, activity, builds: userBuilds.builds });
+        }
+
+        // Valider un utilisateur
+        params = matchRoute('/api/admin/users/:id/validate', pathname);
+        if (method === 'PUT' && params) {
+            try {
+                const user = db.validateUser(params.id, req.user.id);
+                return sendJson(res, { message: 'Utilisateur validé', user });
+            } catch (err) {
+                return sendError(res, err.message, 400);
+            }
         }
 
         params = matchRoute('/api/admin/users/:id/role', pathname);
@@ -412,6 +431,11 @@ async function handleRequest(req, res) {
             const body = await parseBody(req);
             if (!body.repoUrl) return sendError(res, 'repoUrl is required', 400);
 
+            // Vérifier si l'utilisateur a déjà un build en cours
+            if (queue.hasActiveBuild(req.user?.id)) {
+                return sendError(res, 'Vous avez deja un build en cours. Attendez qu\'il soit termine.', 429);
+            }
+
             const build = queue.add({
                 repoUrl: body.repoUrl,
                 branch: body.branch || 'main',
@@ -425,12 +449,16 @@ async function handleRequest(req, res) {
         }
 
         if (method === 'GET' && pathname === '/api/builds') {
-            const { status, limit, offset, userId } = parsedUrl.query;
+            const { status, limit, offset } = parsedUrl.query;
+
+            // Les admins voient tous les builds, les users voient que les leurs
+            const filterUserId = req.user?.role === 'admin' ? null : req.user?.id;
+
             const result = queue.list({
                 status,
                 limit: parseInt(limit) || 50,
                 offset: parseInt(offset) || 0,
-                userId
+                userId: filterUserId
             });
             return sendJson(res, result);
         }
@@ -483,7 +511,9 @@ async function handleRequest(req, res) {
         // ==================== STATS & OTHER ====================
 
         if (method === 'GET' && pathname === '/api/stats') {
-            const stats = queue.getStats();
+            // Les admins voient les stats globales, les users voient que les leurs
+            const filterUserId = req.user?.role === 'admin' ? null : req.user?.id;
+            const stats = queue.getStats(filterUserId);
             return sendJson(res, stats);
         }
 
@@ -495,6 +525,31 @@ async function handleRequest(req, res) {
             tunnel.disconnect();
             tunnel.connect();
             return sendJson(res, { message: 'Reconnection initiated' });
+        }
+
+        // ==================== POWER MANAGEMENT ====================
+
+        // Obtenir les stats du power manager
+        if (method === 'GET' && pathname === '/api/power/stats') {
+            const stats = builder.getPowerStats();
+            return sendJson(res, stats);
+        }
+
+        // Forcer un mode d'alimentation (admin seulement)
+        if (method === 'POST' && pathname === '/api/power/mode') {
+            if (req.user?.role !== 'admin') return sendError(res, 'Admin requis', 403);
+            const body = await parseBody(req);
+            if (!body.mode) return sendError(res, 'Mode requis (build, idle, high-performance, balanced)', 400);
+            const result = await builder.forcePowerMode(body.mode);
+            return sendJson(res, { message: `Mode changé: ${result}`, mode: result });
+        }
+
+        // Activer/désactiver le power manager (admin seulement)
+        if (method === 'POST' && pathname === '/api/power/toggle') {
+            if (req.user?.role !== 'admin') return sendError(res, 'Admin requis', 403);
+            const body = await parseBody(req);
+            builder.setPowerEnabled(body.enabled !== false);
+            return sendJson(res, { message: body.enabled !== false ? 'Power manager activé' : 'Power manager désactivé' });
         }
 
         // ==================== WEBHOOK ====================
@@ -586,19 +641,31 @@ server.listen(port, host, () => {
     console.log(`[Server] Dashboard: http://localhost:${port}`);
     console.log('');
 
+    // Afficher l'état du power manager
+    const powerConfig = config.powerManager || {};
+    if (powerConfig.enabled !== false) {
+        console.log('[Power] Gestion intelligente de l\'alimentation ACTIVE');
+        console.log(`[Power] Mode idle: ${powerConfig.idleMode || 'balanced'}`);
+        console.log(`[Power] Mode build: ${powerConfig.buildMode || 'high-performance'}`);
+        console.log(`[Power] Délai idle: ${(powerConfig.idleTimeout || 60000) / 1000}s`);
+        console.log('');
+    }
+
     if (config.tunnel?.enabled) tunnel.connect();
 });
 
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
     console.log('\n[Server] Arrêt en cours...');
     tunnel.disconnect();
+    await builder.shutdown(); // Restaurer le plan d'alimentation original
     server.close(() => {
         console.log('[Server] Arrêté');
         process.exit(0);
     });
 });
 
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
     tunnel.disconnect();
+    await builder.shutdown();
     server.close(() => process.exit(0));
 });

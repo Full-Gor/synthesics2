@@ -184,31 +184,24 @@ class Database {
 
     // === USER OPERATIONS ===
 
-    register(username, email, password) {
+    register(username, password) {
         if (this.users.find(u => u.username.toLowerCase() === username.toLowerCase())) {
-            throw new Error('Ce nom d\'utilisateur existe déjà');
-        }
-
-        if (this.users.find(u => u.email.toLowerCase() === email.toLowerCase())) {
-            throw new Error('Cet email est déjà utilisé');
+            throw new Error('Ce pseudo existe deja');
         }
 
         if (username.length < 3) {
-            throw new Error('Le nom d\'utilisateur doit contenir au moins 3 caractères');
+            throw new Error('Le pseudo doit contenir au moins 3 caracteres');
         }
         if (password.length < 6) {
-            throw new Error('Le mot de passe doit contenir au moins 6 caractères');
-        }
-        if (!email.includes('@')) {
-            throw new Error('Email invalide');
+            throw new Error('Le mot de passe doit contenir au moins 6 caracteres');
         }
 
         const user = {
             id: this.generateId(),
             username,
-            email: email.toLowerCase(),
             password: this.hashPassword(password),
             role: 'user',
+            validated: false, // Doit être validé par un admin
             createdAt: new Date().toISOString(),
             lastLogin: null,
             lastLogout: null,
@@ -221,16 +214,49 @@ class Database {
         return {
             id: user.id,
             username: user.username,
-            email: user.email,
             role: user.role,
+            validated: user.validated,
             createdAt: user.createdAt
         };
     }
 
+    validateUser(userId, adminId) {
+        const admin = this.users.find(u => u.id === adminId);
+        if (!admin || admin.role !== 'admin') {
+            throw new Error('Non autorise');
+        }
+
+        const user = this.users.find(u => u.id === userId);
+        if (!user) {
+            throw new Error('Utilisateur non trouve');
+        }
+
+        user.validated = true;
+        user.validatedAt = new Date().toISOString();
+        user.validatedBy = adminId;
+        this.saveUsers();
+
+        return {
+            id: user.id,
+            username: user.username,
+            role: user.role,
+            validated: user.validated
+        };
+    }
+
+    getPendingUsers() {
+        return this.users
+            .filter(u => u.validated === false && u.role !== 'admin')
+            .map(u => ({
+                id: u.id,
+                username: u.username,
+                createdAt: u.createdAt
+            }));
+    }
+
     login(username, password, ip = 'unknown') {
         const user = this.users.find(u =>
-            u.username.toLowerCase() === username.toLowerCase() ||
-            u.email.toLowerCase() === username.toLowerCase()
+            u.username.toLowerCase() === username.toLowerCase()
         );
 
         if (!user) {
@@ -241,6 +267,12 @@ class Database {
         if (!this.verifyPassword(password, user.password)) {
             this.addLog('login_failed', user.id, username, ip, { reason: 'wrong_password' });
             throw new Error('Identifiants incorrects');
+        }
+
+        // Vérifier si l'utilisateur est validé (admins sont toujours validés)
+        if (user.role !== 'admin' && !user.validated) {
+            this.addLog('login_failed', user.id, username, ip, { reason: 'not_validated' });
+            throw new Error('Votre compte n\'est pas encore valide. Attendez la validation par un administrateur.');
         }
 
         // Créer la session
@@ -264,8 +296,8 @@ class Database {
             user: {
                 id: user.id,
                 username: user.username,
-                email: user.email,
-                role: user.role
+                role: user.role,
+                validated: user.validated
             }
         };
     }

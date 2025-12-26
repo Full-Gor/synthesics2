@@ -41,7 +41,6 @@
         .admin-nav a.active {
             color: #fff;
             background: rgba(255, 255, 255, 0.15);
-            border-bottom-color: var(--accent-success);
         }
 
         .admin-content {
@@ -923,7 +922,8 @@
 
     <!-- Navigation -->
     <nav class="admin-nav">
-        <a href="#users" class="active" data-section="users">Utilisateurs</a>
+        <a href="#pending" class="active" data-section="pending">En attente</a>
+        <a href="#users" data-section="users">Utilisateurs</a>
         <a href="#messages" data-section="messages">Messages</a>
         <a href="#announcements" data-section="announcements">Annonces</a>
         <a href="#system" data-section="system">Systeme</a>
@@ -933,8 +933,19 @@
 
     <!-- Content -->
     <div class="admin-content">
+        <!-- Pending Users Section -->
+        <section class="admin-section active" id="pending-section">
+            <h2>
+                Comptes en attente de validation
+                <span id="pendingCount" style="font-size: 12px; font-weight: 400; color: var(--text-secondary);"></span>
+            </h2>
+            <div class="users-grid" id="pendingGrid">
+                <div class="empty-state">Chargement...</div>
+            </div>
+        </section>
+
         <!-- Users Section -->
-        <section class="admin-section active" id="users-section">
+        <section class="admin-section" id="users-section">
             <h2>
                 Gestion des utilisateurs
                 <span id="usersCount" style="font-size: 12px; font-weight: 400; color: var(--text-secondary);"></span>
@@ -1105,6 +1116,7 @@
                     return;
                 }
 
+                loadPendingUsers();
                 loadUsers();
                 loadConversations();
                 loadAnnouncements();
@@ -1129,6 +1141,58 @@
                 document.getElementById(`${section}-section`).classList.add('active');
             });
         });
+
+        // ==================== PENDING USERS ====================
+
+        async function loadPendingUsers() {
+            const data = await api('/api/admin/users/pending');
+            const grid = document.getElementById('pendingGrid');
+
+            if (!data || !data.users || data.users.length === 0) {
+                grid.innerHTML = '<div class="empty-state">Aucun compte en attente de validation</div>';
+                document.getElementById('pendingCount').textContent = '';
+                return;
+            }
+
+            document.getElementById('pendingCount').textContent = `(${data.users.length} en attente)`;
+
+            grid.innerHTML = data.users.map(user => `
+                <div class="user-card pending-user">
+                    <div class="user-card-header">
+                        <div class="user-avatar" style="background: var(--accent-warning);">${user.username.charAt(0)}</div>
+                        <div class="user-card-info">
+                            <h3>${user.username}</h3>
+                            <div class="email">Inscrit ${formatRelativeTime(user.createdAt)}</div>
+                        </div>
+                    </div>
+                    <div class="user-card-actions" style="margin-top: 15px; display: flex; gap: 10px;">
+                        <button class="btn btn-primary btn-sm" onclick="validateUser('${user.id}')">Valider</button>
+                        <button class="btn btn-secondary btn-sm" onclick="rejectUser('${user.id}')">Refuser</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function validateUser(userId) {
+            if (!confirm('Valider ce compte ?')) return;
+            try {
+                await api(`/api/admin/users/${userId}/validate`, { method: 'PUT' });
+                loadPendingUsers();
+                loadUsers();
+            } catch (err) {
+                alert('Erreur: ' + err.message);
+            }
+        }
+
+        async function rejectUser(userId) {
+            if (!confirm('Refuser et supprimer ce compte ?')) return;
+            try {
+                await api(`/api/admin/users/${userId}`, { method: 'DELETE' });
+                loadPendingUsers();
+            } catch (err) {
+                alert('Erreur: ' + err.message);
+            }
+        }
 
         // ==================== USERS ====================
 

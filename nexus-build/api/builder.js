@@ -7,12 +7,22 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const PowerManager = require('./power-manager');
 
 class Builder {
     constructor(config, queue) {
         this.config = config;
         this.queue = queue;
         this.isWindows = process.platform === 'win32';
+
+        // Initialiser le Power Manager pour optimiser la consommation
+        this.powerManager = new PowerManager(config.powerManager || {
+            enabled: true,
+            idleMode: 'balanced',
+            buildMode: 'high-performance',
+            idleTimeout: 60000, // 1 minute après le dernier build
+            cpuPriority: 'high'
+        });
 
         // Chemins par défaut Windows
         this.paths = {
@@ -26,7 +36,7 @@ class Builder {
                     : '/opt/flutter')),
             javaHome: this._resolvePath(config.paths?.javaHome ||
                 (this.isWindows
-                    ? 'C:\\Program Files\\Java\\jdk-17'
+                    ? 'C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.17.10-hotspot'
                     : '/usr/lib/jvm/java-17-openjdk'))
         };
 
@@ -58,12 +68,15 @@ class Builder {
         env.ANDROID_SDK_ROOT = this.paths.androidSdk;
         env.JAVA_HOME = this.paths.javaHome;
 
-        // Ajouter au PATH
+        // Java bin en PREMIER pour forcer l'utilisation de Java 17
+        const javaBin = path.join(this.paths.javaHome, 'bin');
+
+        // Ajouter au PATH (Java en premier pour override le système)
         const pathAdditions = [
+            javaBin, // Java 17 en premier!
             path.join(this.paths.androidSdk, 'platform-tools'),
             path.join(this.paths.androidSdk, 'cmdline-tools', 'latest', 'bin'),
             path.join(this.paths.androidSdk, 'build-tools'),
-            path.join(this.paths.javaHome, 'bin'),
             path.join(this.paths.flutterSdk, 'bin')
         ];
 
@@ -440,18 +453,48 @@ class Builder {
             throw new Error('Dossier android/ non trouvé');
         }
 
-        const gradleCmd = this.isWindows ? 'gradlew.bat' : './gradlew';
         const gradlePath = path.join(androidDir, this.isWindows ? 'gradlew.bat' : 'gradlew');
 
+        // Vérifier que gradlew existe
+        if (!fs.existsSync(gradlePath)) {
+            throw new Error(`gradlew non trouvé: ${gradlePath}`);
+        }
+
         // Rendre gradlew exécutable sur Linux
-        if (!this.isWindows && fs.existsSync(gradlePath)) {
+        if (!this.isWindows) {
             fs.chmodSync(gradlePath, '755');
         }
 
         const task = buildType === 'debug' ? 'assembleDebug' : 'assembleRelease';
         this._log(buildId, `Exécution de Gradle ${task}...`);
+        this._log(buildId, `JAVA_HOME: ${this.paths.javaHome}`);
 
-        await this._exec(gradleCmd, [task, '--no-daemon'], {
+        // Sur Windows, utiliser le chemin complet vers gradlew.bat
+        const gradleCmd = this.isWindows ? gradlePath : './gradlew';
+
+        // Utiliser gradle.properties pour éviter les problèmes de chemins avec espaces
+        const gradlePropsPath = path.join(androidDir, 'gradle.properties');
+        let gradleProps = '';
+        if (fs.existsSync(gradlePropsPath)) {
+            gradleProps = fs.readFileSync(gradlePropsPath, 'utf8');
+        }
+
+        // Ajouter/remplacer org.gradle.java.home (échapper les backslashes pour Windows)
+        const javaHomeEscaped = this.paths.javaHome.replace(/\\/g, '\\\\');
+        if (gradleProps.includes('org.gradle.java.home=')) {
+            gradleProps = gradleProps.replace(/org\.gradle\.java\.home=.*/g, `org.gradle.java.home=${javaHomeEscaped}`);
+        } else {
+            gradleProps += `\norg.gradle.java.home=${javaHomeEscaped}\n`;
+        }
+        fs.writeFileSync(gradlePropsPath, gradleProps);
+        this._log(buildId, 'gradle.properties mis à jour avec JAVA_HOME');
+
+        const gradleArgs = [
+            task,
+            '--no-daemon'
+        ];
+
+        await this._exec(gradleCmd, gradleArgs, {
             cwd: androidDir,
             buildId,
             timeout: this.config.build?.timeout || 1800000
@@ -620,11 +663,16 @@ class Builder {
         const buildId = build.id;
 
         try {
+            // Activer le mode haute performance
+            await this.powerManager.onBuildStart(buildId);
+            await this.powerManager.optimizeForBuild();
+
             this._log(buildId, '='.repeat(60));
             this._log(buildId, `Démarrage du build ${buildId}`);
             this._log(buildId, `Repo: ${build.repoUrl}`);
             this._log(buildId, `Branche: ${build.branch}`);
             this._log(buildId, `Type: ${build.buildType}`);
+            this._log(buildId, `Mode alimentation: HAUTE PERFORMANCE`);
             this._log(buildId, '='.repeat(60));
 
             // 1. Cloner le repo
@@ -673,6 +721,7 @@ class Builder {
             if (versions.gradle) this._log(buildId, `  Gradle: ${versions.gradle}`);
             if (versions.agp) this._log(buildId, `  Android Gradle Plugin: ${versions.agp}`);
             if (versions.node) this._log(buildId, `  Node.js requis: ${versions.node}`);
+            this._log(buildId, `  JAVA_HOME: ${this.paths.javaHome}`);
             this._log(buildId, '─'.repeat(50));
 
             // Vérifier la compatibilité
@@ -710,12 +759,16 @@ class Builder {
             this._log(buildId, 'BUILD RÉUSSI');
             this._log(buildId, '='.repeat(60));
 
+            // Notifier le power manager (retour en mode économie si plus de builds)
+            await this.powerManager.onBuildEnd(buildId);
+
             this.queue.complete(buildId, true, {
                 apkPath: apk.filename,
                 apkSize: apk.size,
                 detectedFramework: framework,
                 projectPath: projectDir,
-                detectedVersions: versions
+                detectedVersions: versions,
+                powerStats: this.powerManager.getStats()
             });
 
         } catch (err) {
@@ -725,6 +778,9 @@ class Builder {
 
             // Nettoyer même en cas d'erreur
             this._cleanup(buildId);
+
+            // Notifier le power manager même en cas d'erreur
+            await this.powerManager.onBuildEnd(buildId);
 
             this.queue.complete(buildId, false, {
                 error: err.message
@@ -795,6 +851,34 @@ class Builder {
         } catch (err) { /* ignore */ }
 
         return tools;
+    }
+
+    /**
+     * Obtient les statistiques du power manager
+     */
+    getPowerStats() {
+        return this.powerManager.getStats();
+    }
+
+    /**
+     * Force le mode d'alimentation
+     */
+    async forcePowerMode(mode) {
+        return await this.powerManager.forceMode(mode);
+    }
+
+    /**
+     * Active/désactive le power manager
+     */
+    setPowerEnabled(enabled) {
+        this.powerManager.setEnabled(enabled);
+    }
+
+    /**
+     * Nettoie proprement le builder
+     */
+    async shutdown() {
+        await this.powerManager.restore();
     }
 }
 

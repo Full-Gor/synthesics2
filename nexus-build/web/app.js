@@ -322,7 +322,6 @@ async function loadBuilds() {
         console.error('Failed to load builds:', error);
         elements.buildsList.innerHTML = `
             <div class="empty-state">
-                <div class="empty-state-icon">⚠️</div>
                 <p>Erreur de chargement des builds</p>
             </div>
         `;
@@ -333,7 +332,6 @@ function renderBuilds() {
     if (state.builds.length === 0) {
         elements.buildsList.innerHTML = `
             <div class="empty-state">
-                <div class="empty-state-icon">📱</div>
                 <p>Aucun build pour le moment</p>
                 <p style="font-size: 12px; margin-top: 8px;">Cliquez sur "Nouveau Build" pour commencer</p>
             </div>
@@ -347,9 +345,9 @@ function renderBuilds() {
             <div class="build-info">
                 <div class="build-repo">${extractRepoName(build.repoUrl)}</div>
                 <div class="build-meta">
-                    <span>📂 ${build.branch}</span>
-                    <span>🕐 ${formatDate(build.createdAt)}</span>
-                    ${build.duration ? `<span>⏱️ ${formatDuration(build.duration)}</span>` : ''}
+                    <span>${build.branch}</span>
+                    <span>par ${build.username || 'inconnu'} ${formatDate(build.createdAt)}</span>
+                    ${build.duration ? `<span>${formatDuration(build.duration)}</span>` : ''}
                 </div>
             </div>
             <div class="build-badges">
@@ -358,14 +356,14 @@ function renderBuilds() {
             </div>
             <div class="build-actions">
                 ${build.status === 'success' && build.apkPath ? `
-                    <a href="/api/apks/${build.id}/${build.apkPath}" class="btn btn-sm btn-success"
+                    <a href="/api/apks/${build.id}/${build.apkPath}" class="btn btn-sm btn-secondary"
                        onclick="event.stopPropagation();">
-                        ⬇️ APK
+                        APK
                     </a>
                 ` : ''}
                 ${build.status !== 'building' ? `
-                    <button class="btn btn-sm btn-danger" onclick="deleteBuild('${build.id}', event)">
-                        🗑️
+                    <button class="btn btn-sm btn-secondary" onclick="deleteBuild('${build.id}', event)">
+                        Supprimer
                     </button>
                 ` : ''}
             </div>
@@ -391,9 +389,9 @@ async function showBuildDetails(id) {
                 <div class="build-details-info">
                     <h3>${extractRepoName(build.repoUrl)}</h3>
                     <div class="build-details-meta">
-                        <span>📂 ${build.branch}</span>
-                        <span>🔗 ${build.repoUrl}</span>
-                        ${build.subdir ? `<span>📁 ${build.subdir}</span>` : ''}
+                        <span>${build.branch}</span>
+                        <span>${build.repoUrl}</span>
+                        ${build.subdir ? `<span>${build.subdir}</span>` : ''}
                     </div>
                 </div>
                 <div class="build-details-actions">
@@ -403,12 +401,12 @@ async function showBuildDetails(id) {
             </div>
 
             <div class="build-details-meta" style="margin-bottom: 20px;">
-                <span>📊 Statut: <strong style="color: ${getStatusColor(build.status)}">${getStatusLabel(build.status)}</strong></span>
-                <span>🕐 Créé: ${formatDate(build.createdAt)}</span>
-                ${build.startedAt ? `<span>▶️ Démarré: ${formatDate(build.startedAt)}</span>` : ''}
-                ${build.completedAt ? `<span>✓ Terminé: ${formatDate(build.completedAt)}</span>` : ''}
-                ${build.duration ? `<span>⏱️ Durée: ${formatDuration(build.duration)}</span>` : ''}
-                ${build.apkSize ? `<span>📦 Taille: ${formatSize(build.apkSize)}</span>` : ''}
+                <span>Statut: <strong style="color: ${getStatusColor(build.status)}">${getStatusLabel(build.status)}</strong></span>
+                <span>Cree: ${formatDate(build.createdAt)}</span>
+                ${build.startedAt ? `<span>Demarre: ${formatDate(build.startedAt)}</span>` : ''}
+                ${build.completedAt ? `<span>Termine: ${formatDate(build.completedAt)}</span>` : ''}
+                ${build.duration ? `<span>Duree: ${formatDuration(build.duration)}</span>` : ''}
+                ${build.apkSize ? `<span>Taille: ${formatSize(build.apkSize)}</span>` : ''}
             </div>
 
             ${build.error ? `
@@ -421,7 +419,7 @@ async function showBuildDetails(id) {
             ${build.status === 'success' && build.apkPath ? `
                 <div style="margin-bottom: 20px;">
                     <a href="/api/apks/${build.id}/${build.apkPath}" class="btn btn-success">
-                        ⬇️ Télécharger l'APK (${formatSize(build.apkSize)})
+                        Telecharger l'APK (${formatSize(build.apkSize)})
                     </a>
                 </div>
             ` : ''}
@@ -708,10 +706,8 @@ async function loadAnnouncements() {
 
         section.style.display = 'block';
         list.innerHTML = data.announcements.map(ann => `
-            <div class="announcement-banner ${ann.type}">
-                <h4>${escapeHtml(ann.title)}</h4>
+            <div class="announcement-banner">
                 <p>${escapeHtml(ann.content)}</p>
-                <small>Par ${ann.authorUsername} - ${formatDate(ann.createdAt)}</small>
             </div>
         `).join('');
     } catch (error) {

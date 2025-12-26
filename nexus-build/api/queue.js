@@ -94,6 +94,19 @@ class BuildQueue extends EventEmitter {
     }
 
     /**
+     * Vérifie si un utilisateur a déjà un build actif (queued ou building)
+     */
+    hasActiveBuild(userId) {
+        if (!userId) return false;
+        for (const build of this.builds.values()) {
+            if (build.userId === userId && (build.status === 'queued' || build.status === 'building')) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Ajoute un nouveau build à la queue
      */
     add(options) {
@@ -108,6 +121,8 @@ class BuildQueue extends EventEmitter {
             subdir: options.subdir || '',
             framework: options.framework || 'auto',
             buildType: options.buildType || 'release',
+            userId: options.userId || null,
+            username: options.username || null,
             createdAt: now,
             updatedAt: now,
             startedAt: null,
@@ -126,7 +141,7 @@ class BuildQueue extends EventEmitter {
         this._saveBuild(build);
 
         this.emit('build:added', build);
-        console.log(`[Queue] Build ajouté: ${id}`);
+        console.log(`[Queue] Build ajouté: ${id} par ${build.username || 'inconnu'}`);
 
         // Tenter de traiter la queue
         this._processQueue();
@@ -151,10 +166,11 @@ class BuildQueue extends EventEmitter {
     }
 
     /**
-     * Traite la queue - lance les builds en parallèle
+     * Traite la queue - lance les builds (pas de limite globale)
      */
     _processQueue() {
-        while (this.activeBuilds < this.maxConcurrent && this.queue.length > 0) {
+        // Pas de limite globale, on lance tous les builds en attente
+        while (this.queue.length > 0) {
             const build = this.getNext();
             if (build) {
                 this.activeBuilds++;
@@ -163,7 +179,7 @@ class BuildQueue extends EventEmitter {
                 build.updatedAt = build.startedAt;
                 this._saveBuild(build);
                 this.emit('build:start', build);
-                console.log(`[Queue] Build démarré: ${build.id} (${this.activeBuilds}/${this.maxConcurrent} actifs)`);
+                console.log(`[Queue] Build démarré: ${build.id} (${this.activeBuilds} actifs)`);
             }
         }
     }
@@ -253,9 +269,14 @@ class BuildQueue extends EventEmitter {
      * Liste tous les builds
      */
     list(options = {}) {
-        const { status, limit = 50, offset = 0 } = options;
+        const { status, limit = 50, offset = 0, userId } = options;
 
         let builds = Array.from(this.builds.values());
+
+        // Filtrer par utilisateur (si spécifié)
+        if (userId) {
+            builds = builds.filter(b => b.userId === userId);
+        }
 
         // Filtrer par statut
         if (status) {
@@ -307,8 +328,13 @@ class BuildQueue extends EventEmitter {
     /**
      * Retourne les statistiques
      */
-    getStats() {
-        const builds = Array.from(this.builds.values());
+    getStats(userId = null) {
+        let builds = Array.from(this.builds.values());
+
+        // Filtrer par utilisateur si spécifié
+        if (userId) {
+            builds = builds.filter(b => b.userId === userId);
+        }
 
         const stats = {
             total: builds.length,
@@ -316,9 +342,9 @@ class BuildQueue extends EventEmitter {
             building: 0,
             success: 0,
             failed: 0,
-            activeBuilds: this.activeBuilds,
+            activeBuilds: userId ? builds.filter(b => b.status === 'building').length : this.activeBuilds,
             maxConcurrent: this.maxConcurrent,
-            queueLength: this.queue.length
+            queueLength: userId ? builds.filter(b => b.status === 'queued').length : this.queue.length
         };
 
         for (const build of builds) {
