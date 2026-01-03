@@ -584,6 +584,94 @@ sdk.dir=${sdkPath}
     }
 
     /**
+     * Fix settings.gradle or settings.gradle.kts for plugin resolution
+     * Handles both Expo and bare React Native projects
+     */
+    _fixSettingsGradle(projectDir, buildId) {
+        const androidDir = path.join(projectDir, 'android');
+
+        // Check for both Groovy and Kotlin DSL settings files
+        const settingsGroovyPath = path.join(androidDir, 'settings.gradle');
+        const settingsKtsPath = path.join(androidDir, 'settings.gradle.kts');
+
+        const isKotlinDsl = fs.existsSync(settingsKtsPath);
+        const settingsPath = isKotlinDsl ? settingsKtsPath : settingsGroovyPath;
+
+        if (!fs.existsSync(settingsPath)) {
+            this._log(buildId, '[Auto-fix] settings.gradle non trouvé');
+            return;
+        }
+
+        this._log(buildId, `[Auto-fix] Correction de ${isKotlinDsl ? 'settings.gradle.kts' : 'settings.gradle'}...`);
+
+        try {
+            let content = fs.readFileSync(settingsPath, 'utf8');
+            let modified = false;
+
+            if (isKotlinDsl) {
+                // Kotlin DSL - Check if react-native-gradle-plugin is properly included
+                if (content.includes('com.facebook.react.settings') && !content.includes('includeBuild')) {
+                    this._log(buildId, '[Auto-fix] Ajout React Native plugin includeBuild pour Kotlin DSL...');
+
+                    const rnPluginInclude = `
+    // NexusBuild Auto-fix: React Native Gradle Plugin
+    val reactNativeDir = file(providers.exec {
+        workingDir(rootDir)
+        commandLine("node", "-e", "console.log(require.resolve('react-native/package.json'))")
+    }.standardOutput.asText.get().trim()).parentFile
+    includeBuild(reactNativeDir.resolve("ReactAndroid/hermes-engine"))
+    includeBuild(reactNativeDir.resolve("ReactAndroid"))`;
+
+                    if (content.includes('pluginManagement {')) {
+                        content = content.replace(
+                            /pluginManagement\s*\{/,
+                            `pluginManagement {${rnPluginInclude}`
+                        );
+                        modified = true;
+                    }
+                }
+            } else {
+                // Groovy DSL - Handle React Native / Expo autolinking
+                if (!content.includes('NexusBuild Auto-fix') && !content.includes('expo-module-gradle-plugin')) {
+                    this._log(buildId, '[Auto-fix] Ajout plugin resolution pour Groovy DSL...');
+
+                    const pluginResolutionBlock = `
+// NexusBuild Auto-fix: Plugin resolution
+pluginManagement {
+    def reactNativeDir = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).parentFile
+    includeBuild(new File(reactNativeDir, "ReactAndroid/hermes-engine"))
+    includeBuild(new File(reactNativeDir, "ReactAndroid"))
+}
+
+`;
+                    if (content.includes('pluginManagement')) {
+                        content = content.replace(
+                            /pluginManagement\s*\{/,
+                            `pluginManagement {
+    // NexusBuild Auto-fix: React Native plugin resolution
+    def reactNativeDir = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).parentFile
+    includeBuild(new File(reactNativeDir, "ReactAndroid/hermes-engine"))
+    includeBuild(new File(reactNativeDir, "ReactAndroid"))`
+                        );
+                    } else {
+                        content = pluginResolutionBlock + content;
+                    }
+                    modified = true;
+                }
+            }
+
+            if (modified) {
+                fs.writeFileSync(settingsPath, content);
+                this._log(buildId, `[Auto-fix] ${isKotlinDsl ? 'settings.gradle.kts' : 'settings.gradle'} mis à jour`);
+            } else {
+                this._log(buildId, '[Auto-fix] settings déjà configuré');
+            }
+        } catch (err) {
+            this._log(buildId, `[Auto-fix] Avertissement: Impossible de modifier settings: ${err.message}`, 'warning');
+        }
+    }
+
+    /**
      * Exécute expo prebuild
      */
     async _expoPrebuild(projectDir, buildId) {
@@ -594,6 +682,7 @@ sdk.dir=${sdkPath}
             // Appliquer les fixes même si android/ existe déjà
             this._createLocalProperties(projectDir, buildId);
             this._fixGradleKotlinCompat(projectDir, buildId);
+            this._fixSettingsGradle(projectDir, buildId);
             return;
         }
 
@@ -621,6 +710,7 @@ sdk.dir=${sdkPath}
         // Appliquer les fixes après prebuild
         this._createLocalProperties(projectDir, buildId);
         this._fixGradleKotlinCompat(projectDir, buildId);
+        this._fixSettingsGradle(projectDir, buildId);
 
         this._log(buildId, 'Expo prebuild terminé');
     }
