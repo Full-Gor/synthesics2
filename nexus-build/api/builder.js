@@ -404,16 +404,183 @@ class Builder {
      * Installe les dépendances npm
      */
     async _npmInstall(projectDir, buildId) {
-        this._log(buildId, 'Installation des dépendances npm...');
+        this._log(buildId, 'Installation des dépendances npm (avec devDependencies)...');
 
         const npmCmd = this.isWindows ? 'npm.cmd' : 'npm';
-        await this._exec(npmCmd, ['install', '--legacy-peer-deps'], {
+        await this._exec(npmCmd, ['install', '--include=dev', '--legacy-peer-deps'], {
             cwd: projectDir,
             buildId,
             timeout: 600000
         });
 
+        // Ensure critical Expo dependencies are installed
+        await this._ensureExpoDependencies(projectDir, buildId);
+
         this._log(buildId, 'Dépendances installées');
+    }
+
+    /**
+     * Ensure critical Expo dependencies are installed
+     */
+    async _ensureExpoDependencies(projectDir, buildId) {
+        const packagePath = path.join(projectDir, 'package.json');
+        if (!fs.existsSync(packagePath)) return;
+
+        try {
+            const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+            const allDeps = {
+                ...pkg.dependencies,
+                ...pkg.devDependencies
+            };
+
+            // Critical Expo dependencies that must be present for builds
+            const criticalDeps = ['babel-preset-expo'];
+            const missingDeps = criticalDeps.filter(dep => !allDeps[dep]);
+
+            if (missingDeps.length > 0) {
+                this._log(buildId, `[Auto-fix] Installation des dépendances Expo manquantes: ${missingDeps.join(', ')}`);
+                const npmCmd = this.isWindows ? 'npm.cmd' : 'npm';
+                await this._exec(npmCmd, ['install', '--save-dev', ...missingDeps], {
+                    cwd: projectDir,
+                    buildId,
+                    timeout: 300000
+                });
+            }
+        } catch (err) {
+            this._log(buildId, `[Auto-fix] Avertissement: Impossible de vérifier les dépendances Expo: ${err.message}`, 'warning');
+        }
+    }
+
+    /**
+     * Auto-fix app.json for Expo projects
+     * Ensures android.package is set
+     */
+    _fixAppJson(projectDir, buildId) {
+        const appJsonPath = path.join(projectDir, 'app.json');
+
+        if (!fs.existsSync(appJsonPath)) {
+            this._log(buildId, '[Auto-fix] Pas de app.json trouvé, création...');
+            const defaultAppJson = {
+                expo: {
+                    name: 'NexusBuildApp',
+                    slug: 'nexusbuild-app',
+                    version: '1.0.0',
+                    android: {
+                        package: 'com.nexusbuild.app'
+                    }
+                }
+            };
+            fs.writeFileSync(appJsonPath, JSON.stringify(defaultAppJson, null, 2));
+            this._log(buildId, '[Auto-fix] app.json créé avec android.package par défaut');
+            return;
+        }
+
+        try {
+            const appJson = JSON.parse(fs.readFileSync(appJsonPath, 'utf8'));
+            let modified = false;
+
+            if (!appJson.expo) {
+                appJson.expo = {};
+                modified = true;
+            }
+
+            if (!appJson.expo.android) {
+                appJson.expo.android = {};
+                modified = true;
+            }
+
+            if (!appJson.expo.android.package) {
+                const slug = appJson.expo.slug || appJson.expo.name || 'myapp';
+                const cleanSlug = slug.toLowerCase().replace(/[^a-z0-9]/g, '');
+                appJson.expo.android.package = `com.nexusbuild.${cleanSlug}`;
+                modified = true;
+                this._log(buildId, `[Auto-fix] Ajouté android.package: ${appJson.expo.android.package}`);
+            }
+
+            if (modified) {
+                fs.writeFileSync(appJsonPath, JSON.stringify(appJson, null, 2));
+                this._log(buildId, '[Auto-fix] app.json mis à jour');
+            }
+        } catch (err) {
+            this._log(buildId, `[Auto-fix] Avertissement: Impossible de parser app.json: ${err.message}`, 'warning');
+        }
+    }
+
+    /**
+     * Auto-fix Gradle/Kotlin compatibility issues
+     */
+    _fixGradleKotlinCompat(projectDir, buildId) {
+        const androidDir = path.join(projectDir, 'android');
+        const gradlePropsPath = path.join(androidDir, 'gradle.properties');
+
+        if (!fs.existsSync(androidDir)) {
+            return;
+        }
+
+        this._log(buildId, '[Auto-fix] Application des corrections Kotlin/Compose...');
+
+        const compatProperties = [
+            '# NexusBuild Auto-fix: Kotlin/Compose compatibility',
+            'kotlin.jvm.target.validation.mode=IGNORE',
+            'android.suppressKotlinVersionCompatibilityCheck=true',
+            'org.gradle.jvmargs=-Xmx4g -XX:+HeapDumpOnOutOfMemoryError',
+            'org.gradle.parallel=true',
+            'org.gradle.caching=true',
+            'expo.modules.core.publishing.disabled=true'
+        ];
+
+        let existingContent = '';
+        if (fs.existsSync(gradlePropsPath)) {
+            existingContent = fs.readFileSync(gradlePropsPath, 'utf8');
+        }
+
+        let modified = false;
+        let newContent = existingContent;
+
+        for (const prop of compatProperties) {
+            if (prop.startsWith('#')) {
+                if (!existingContent.includes('NexusBuild Auto-fix')) {
+                    newContent += '\n' + prop;
+                    modified = true;
+                }
+                continue;
+            }
+
+            const propKey = prop.split('=')[0];
+            if (!existingContent.includes(propKey)) {
+                newContent += '\n' + prop;
+                modified = true;
+                this._log(buildId, `[Auto-fix] Ajouté: ${prop}`);
+            }
+        }
+
+        if (modified) {
+            fs.writeFileSync(gradlePropsPath, newContent.trim() + '\n');
+            this._log(buildId, '[Auto-fix] gradle.properties mis à jour');
+        }
+    }
+
+    /**
+     * Create local.properties with SDK paths
+     */
+    _createLocalProperties(projectDir, buildId) {
+        const androidDir = path.join(projectDir, 'android');
+        const localPropsPath = path.join(androidDir, 'local.properties');
+
+        if (!fs.existsSync(androidDir)) {
+            return;
+        }
+
+        this._log(buildId, '[Auto-fix] Création de local.properties...');
+
+        // Échapper les backslashes pour Windows
+        const sdkPath = this.paths.androidSdk.replace(/\\/g, '\\\\');
+        const content = `# Auto-generated by NexusBuild
+sdk.dir=${sdkPath}
+`;
+
+        fs.writeFileSync(localPropsPath, content);
+        this._log(buildId, `[Auto-fix] local.properties créé avec sdk.dir`);
     }
 
     /**
@@ -424,12 +591,22 @@ class Builder {
 
         if (fs.existsSync(androidDir)) {
             this._log(buildId, 'Dossier android/ déjà présent, skip prebuild');
+            // Appliquer les fixes même si android/ existe déjà
+            this._createLocalProperties(projectDir, buildId);
+            this._fixGradleKotlinCompat(projectDir, buildId);
             return;
         }
+
+        // Auto-fix app.json avant prebuild
+        this._fixAppJson(projectDir, buildId);
 
         this._log(buildId, 'Exécution de expo prebuild...');
 
         const npxCmd = this.isWindows ? 'npx.cmd' : 'npx';
+
+        // Définir CI=1 pour le mode non-interactif
+        const env = { ...this._buildEnv(), CI: '1' };
+
         await this._exec(npxCmd, [
             'expo', 'prebuild',
             '--platform', 'android',
@@ -437,8 +614,13 @@ class Builder {
         ], {
             cwd: projectDir,
             buildId,
-            timeout: 600000
+            timeout: 600000,
+            env
         });
+
+        // Appliquer les fixes après prebuild
+        this._createLocalProperties(projectDir, buildId);
+        this._fixGradleKotlinCompat(projectDir, buildId);
 
         this._log(buildId, 'Expo prebuild terminé');
     }

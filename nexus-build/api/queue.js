@@ -367,6 +367,21 @@ class BuildQueue extends EventEmitter {
     }
 
     /**
+     * Supprime tous les builds (sauf ceux en cours)
+     */
+    deleteAll() {
+        let deleted = 0;
+        for (const [id, build] of this.builds) {
+            if (build.status !== 'building' && build.status !== 'queued') {
+                this.delete(id);
+                deleted++;
+            }
+        }
+        console.log(`[Queue] ${deleted} builds supprimés`);
+        return deleted;
+    }
+
+    /**
      * Nettoie les anciens builds
      */
     cleanup(keepDays = 7) {
