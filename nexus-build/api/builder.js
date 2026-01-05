@@ -558,7 +558,106 @@ class Builder {
             fs.writeFileSync(gradlePropsPath, newContent.trim() + '\n');
             this._log(buildId, '[Auto-fix] gradle.properties mis à jour');
         }
+
+        // Also patch build.gradle if needed for Kotlin version
+        this._fixBuildGradleKotlin(projectDir, buildId);
     }
+
+    /**
+     * Detect Expo SDK version from package.json
+     */
+    _detectExpoSdkVersion(projectDir) {
+        const packageJsonPath = path.join(projectDir, 'package.json');
+        if (!fs.existsSync(packageJsonPath)) return null;
+        try {
+            const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+            const deps = { ...packageJson.dependencies, ...packageJson.devDependencies };
+            const expoVersion = deps['expo'];
+            if (!expoVersion) return null;
+            const match = expoVersion.match(/(\d+)\./);
+            if (match) return parseInt(match[1], 10);
+        } catch (err) { }
+        return null;
+    }
+
+    /**
+     * Get compatible Gradle version for Expo SDK
+     */
+    _getCompatibleGradleVersion(sdkVersion) {
+        if (sdkVersion <= 50) return '8.4';
+        else if (sdkVersion === 51) return '8.6';
+        else return '8.8';
+    }
+
+    /**
+     * Fix Gradle wrapper version for Expo SDK compatibility
+     */
+    _fixGradleVersion(projectDir, buildId) {
+        const sdkVersion = this._detectExpoSdkVersion(projectDir);
+        if (!sdkVersion) {
+            this._log(buildId, '[Auto-fix] Impossible de détecter la version Expo SDK');
+            return;
+        }
+        this._log(buildId, `[Auto-fix] Expo SDK ${sdkVersion} détecté`);
+
+        const androidDir = path.join(projectDir, 'android');
+        const gradleWrapperPath = path.join(androidDir, 'gradle', 'wrapper', 'gradle-wrapper.properties');
+        if (!fs.existsSync(gradleWrapperPath)) {
+            this._log(buildId, '[Auto-fix] gradle-wrapper.properties non trouvé, skip');
+            return;
+        }
+
+        try {
+            let content = fs.readFileSync(gradleWrapperPath, 'utf8');
+            const currentVersionMatch = content.match(/gradle-(\d+\.\d+(\.\d+)?)-/);
+            const currentVersion = currentVersionMatch ? currentVersionMatch[1] : 'unknown';
+            const targetVersion = this._getCompatibleGradleVersion(sdkVersion);
+            const currentMajorMinor = currentVersion.split('.').slice(0, 2).join('.');
+
+            if (currentMajorMinor > targetVersion) {
+                this._log(buildId, `[Auto-fix] Downgrade Gradle de ${currentVersion} vers ${targetVersion} pour SDK ${sdkVersion}`);
+                content = content.replace(/gradle-\d+\.\d+(\.\d+)?-(all|bin)\.zip/, `gradle-${targetVersion}-bin.zip`);
+                fs.writeFileSync(gradleWrapperPath, content);
+                this._log(buildId, `[Auto-fix] Version Gradle mise à jour vers ${targetVersion}`);
+            } else {
+                this._log(buildId, `[Auto-fix] Gradle ${currentVersion} compatible avec SDK ${sdkVersion}`);
+            }
+        } catch (err) {
+            this._log(buildId, `[Auto-fix] Avertissement: Impossible de mettre à jour Gradle: ${err.message}`, 'warning');
+        }
+    }
+
+    /**
+     * Fix build.gradle to use compatible Kotlin version
+     */
+    _fixBuildGradleKotlin(projectDir, buildId) {
+        const androidDir = path.join(projectDir, 'android');
+        const buildGradlePath = path.join(androidDir, 'build.gradle');
+        if (!fs.existsSync(buildGradlePath)) return;
+
+        try {
+            let content = fs.readFileSync(buildGradlePath, 'utf8');
+            let modified = false;
+
+            content = content.replace(/(kotlinVersion\s*=\s*["'])(\d+\.\d+\.\d+)(["'])/g, (match, prefix, version, suffix) => {
+                const [major, minor, patch] = version.split('.').map(Number);
+                if (major === 1 && minor === 9 && patch < 25) {
+                    this._log(buildId, `[Auto-fix] Mise à jour Kotlin de ${version} vers 1.9.25`);
+                    modified = true;
+                    return `${prefix}1.9.25${suffix}`;
+                }
+                return match;
+            });
+
+            if (modified) {
+                fs.writeFileSync(buildGradlePath, content);
+                this._log(buildId, '[Auto-fix] Version Kotlin mise à jour dans build.gradle');
+            }
+        } catch (err) {
+            this._log(buildId, `[Auto-fix] Avertissement: Impossible de patcher build.gradle: ${err.message}`, 'warning');
+        }
+    }
+
 
     /**
      * Create local.properties with SDK paths
@@ -585,9 +684,17 @@ sdk.dir=${sdkPath}
 
     /**
      * Fix settings.gradle or settings.gradle.kts for plugin resolution
-     * Handles both Expo and bare React Native projects
+     * ONLY for bare React Native projects - NOT for Expo projects
+     * Expo SDK 54+ generates correct settings.gradle via prebuild with version catalogs
      */
-    _fixSettingsGradle(projectDir, buildId) {
+    _fixSettingsGradle(projectDir, buildId, isExpoProject = false) {
+        // Skip for Expo projects - expo prebuild generates correct settings.gradle
+        // with version catalogs that we should NOT modify
+        if (isExpoProject) {
+            this._log(buildId, '[Auto-fix] Projet Expo - settings.gradle généré par prebuild, pas de modification');
+            return;
+        }
+
         const androidDir = path.join(projectDir, 'android');
 
         // Check for both Groovy and Kotlin DSL settings files
@@ -602,7 +709,18 @@ sdk.dir=${sdkPath}
             return;
         }
 
-        this._log(buildId, `[Auto-fix] Correction de ${isKotlinDsl ? 'settings.gradle.kts' : 'settings.gradle'}...`);
+        // Check if this is actually an Expo-generated settings (has version catalogs or expo-autolinking)
+        try {
+            const content = fs.readFileSync(settingsPath, 'utf8');
+            if (content.includes('versionCatalogs') || content.includes('expo-autolinking') || content.includes('libs.versions.toml')) {
+                this._log(buildId, '[Auto-fix] settings.gradle avec version-catalog détecté, pas de modification');
+                return;
+            }
+        } catch (err) {
+            // Continue with fix attempt
+        }
+
+        this._log(buildId, `[Auto-fix] Correction de ${isKotlinDsl ? 'settings.gradle.kts' : 'settings.gradle'} (bare RN)...`);
 
         try {
             let content = fs.readFileSync(settingsPath, 'utf8');
@@ -631,7 +749,7 @@ sdk.dir=${sdkPath}
                     }
                 }
             } else {
-                // Groovy DSL - Handle React Native / Expo autolinking
+                // Groovy DSL - Handle bare React Native projects only
                 if (!content.includes('NexusBuild Auto-fix') && !content.includes('expo-module-gradle-plugin')) {
                     this._log(buildId, '[Auto-fix] Ajout plugin resolution pour Groovy DSL...');
 
@@ -681,8 +799,9 @@ pluginManagement {
             this._log(buildId, 'Dossier android/ déjà présent, skip prebuild');
             // Appliquer les fixes même si android/ existe déjà
             this._createLocalProperties(projectDir, buildId);
+            this._fixGradleVersion(projectDir, buildId);
             this._fixGradleKotlinCompat(projectDir, buildId);
-            this._fixSettingsGradle(projectDir, buildId);
+            this._fixSettingsGradle(projectDir, buildId, true); // true = Expo project
             return;
         }
 
@@ -709,8 +828,9 @@ pluginManagement {
 
         // Appliquer les fixes après prebuild
         this._createLocalProperties(projectDir, buildId);
+        this._fixGradleVersion(projectDir, buildId);
         this._fixGradleKotlinCompat(projectDir, buildId);
-        this._fixSettingsGradle(projectDir, buildId);
+        this._fixSettingsGradle(projectDir, buildId, true); // true = Expo project
 
         this._log(buildId, 'Expo prebuild terminé');
     }

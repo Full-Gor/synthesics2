@@ -23,6 +23,7 @@ Compilez vos APK (React Native, Expo, Flutter) sans aucun service cloud.
 - **Webhooks Git** - GitHub, GitLab, Gitea
 - **Tunnel intégré** - Exposition via NexusTunnel
 - **100% offline** - Fonctionne sans internet après installation
+- **Gestion intelligente de l'énergie** - Optimise la consommation du PC
 
 ## Prérequis
 
@@ -335,6 +336,55 @@ nexus-build/
 ├─────────────────────────────────────────────────────────────────┤
 │  Flutter 3.16-3.27  ←→  Dart 3.2-3.6  ←→  Java 11/17/21        │
 └─────────────────────────────────────────────────────────────────┘
+```
+
+## Gestion intelligente de l'énergie
+
+Synthesics2 optimise automatiquement la consommation d'énergie de votre PC :
+
+- **Mode Idle** : Quand aucun build n'est en cours, le PC passe en mode économie d'énergie
+- **Mode Build** : Pendant les builds, le PC passe en mode haute performance
+- **Transition automatique** : 1 minute après le dernier build, retour en mode économie
+
+### Configuration
+
+Dans `config.json` :
+
+```json
+{
+  "powerManager": {
+    "enabled": true,
+    "idleMode": "balanced",
+    "buildMode": "high-performance",
+    "idleTimeout": 60000,
+    "cpuPriority": "high"
+  }
+}
+```
+
+| Option | Description | Valeurs |
+|--------|-------------|---------|
+| `enabled` | Active/désactive la gestion | `true`, `false` |
+| `idleMode` | Mode quand inactif | `balanced`, `power-saver` |
+| `buildMode` | Mode pendant les builds | `high-performance`, `ultimate` |
+| `idleTimeout` | Délai avant mode idle (ms) | `60000` (1 min) |
+| `cpuPriority` | Priorité des processus | `normal`, `high`, `realtime` |
+
+### API REST
+
+```bash
+# Obtenir les statistiques d'énergie
+curl http://localhost:3001/api/power/stats
+
+# Forcer un mode (admin)
+curl -X POST http://localhost:3001/api/power/mode \
+  -H "Content-Type: application/json" \
+  -d '{"mode": "high-performance"}'
+
+# Activer/désactiver (admin)
+curl -X POST http://localhost:3001/api/power/toggle \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": true}'
 ```
 
 ## Dépannage

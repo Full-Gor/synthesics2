@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Synthesics2 - Abonnement</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --primary-light: #34495e;
+            --bg-main: #d5d5d5;
+            --bg-card: #ffffff;
+            --text-primary: #2c3e50;
+            --text-secondary: #7f8c8d;
+            --accent-success: #27ae60;
+            --accent-danger: #e74c3c;
+            --radius-md: 15px;
+            --radius-lg: 25px;
+            --shadow: 0 25px 50px rgba(0,0,0,0.15);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: var(--bg-main);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 30px;
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow);
+            margin-bottom: 30px;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .logo {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .logo span {
+            color: var(--primary);
+            opacity: 0.6;
+        }
+
+        .back-btn {
+            padding: 10px 20px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 13px;
+            text-decoration: none;
+            transition: all 0.3s;
+        }
+
+        .back-btn:hover {
+            background: var(--primary-light);
+        }
+
+        /* Discount Badge */
+        .discount-badge {
+            display: inline-block;
+            background: var(--accent-danger);
+            color: white;
+            padding: 8px 20px;
+            border-radius: 50px;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+
+        /* Hero Section */
+        .hero {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .hero h1 {
+            font-size: 36px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .hero p {
+            color: var(--text-secondary);
+            font-size: 16px;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        /* Pricing Card */
+        .pricing-card {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow);
+            padding: 40px;
+            margin-bottom: 40px;
+        }
+
+        .pricing-header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 30px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .pricing-title {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+
+        .pricing-amount {
+            display: flex;
+            align-items: baseline;
+            justify-content: center;
+            gap: 5px;
+        }
+
+        .price {
+            font-size: 72px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .currency {
+            font-size: 32px;
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        .period {
+            font-size: 18px;
+            color: var(--text-secondary);
+        }
+
+        .competitor-price {
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-top: 10px;
+        }
+
+        .competitor-price s {
+            color: var(--accent-danger);
+        }
+
+        /* Features List */
+        .features-list {
+            list-style: none;
+            margin-bottom: 30px;
+        }
+
+        .feature-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 15px;
+            padding: 15px 0;
+            border-bottom: 1px solid #f5f5f5;
+        }
+
+        .feature-item:last-child {
+            border-bottom: none;
+        }
+
+        .feature-check {
+            width: 24px;
+            height: 24px;
+            background: var(--accent-success);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .feature-number {
+            width: 24px;
+            height: 24px;
+            background: var(--primary);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .feature-content h4 {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 3px;
+        }
+
+        .feature-content p {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        /* Subscribe Button */
+        .subscribe-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+            padding: 18px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-family: inherit;
+        }
+
+        .subscribe-btn:hover {
+            background: var(--primary-light);
+            transform: translateY(-2px);
+        }
+
+        .subscribe-btn .arrow {
+            font-size: 20px;
+        }
+
+        /* Stripe Badge */
+        .stripe-badge {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+            color: var(--text-secondary);
+            font-size: 13px;
+        }
+
+        .stripe-logo {
+            height: 20px;
+            opacity: 0.7;
+        }
+
+        /* Comparison Table */
+        .comparison-section {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow);
+            padding: 40px;
+            margin-bottom: 40px;
+        }
+
+        .comparison-section h2 {
+            font-size: 20px;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .comparison-table th,
+        .comparison-table td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        .comparison-table th {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        .comparison-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .comparison-table tr.highlight td {
+            background: rgba(44, 62, 80, 0.05);
+            font-weight: 600;
+        }
+
+        .comparison-table .price-cell {
+            font-weight: 600;
+        }
+
+        /* FAQ Section */
+        .faq-section {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow);
+            padding: 40px;
+            margin-bottom: 40px;
+        }
+
+        .faq-section h2 {
+            font-size: 20px;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+
+        .faq-item {
+            border-bottom: 1px solid #eee;
+        }
+
+        .faq-item:last-child {
+            border-bottom: none;
+        }
+
+        .faq-question {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 0;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .faq-question:hover {
+            color: var(--primary-light);
+        }
+
+        .faq-arrow {
+            font-size: 18px;
+            transition: transform 0.3s;
+        }
+
+        .faq-item.active .faq-arrow {
+            transform: rotate(180deg);
+        }
+
+        .faq-answer {
+            display: none;
+            padding-bottom: 20px;
+            color: var(--text-secondary);
+            font-size: 14px;
+            line-height: 1.7;
+        }
+
+        .faq-item.active .faq-answer {
+            display: block;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 30px;
+            color: var(--text-secondary);
+            font-size: 13px;
+        }
+
+        .footer span {
+            margin: 0 5px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px;
+            }
+
+            .header {
+                flex-direction: column;
+                gap: 15px;
+                padding: 20px;
+            }
+
+            .hero h1 {
+                font-size: 28px;
+            }
+
+            .pricing-card {
+                padding: 25px;
+            }
+
+            .price {
+                font-size: 56px;
+            }
+
+            .comparison-table th,
+            .comparison-table td {
+                padding: 10px;
+                font-size: 13px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <div class="logo">Synthesics<span>2</span></div>
+            </div>
+            <a href="/" class="back-btn">Retour au dashboard</a>
+        </header>
+
+        <!-- Hero -->
+        <div class="hero">
+            <div class="discount-badge">-80% vs. autres plateformes</div>
+            <h1>Build Android Illimite</h1>
+            <p>Service de compilation APK auto-heberge. Aucune dependance cloud. Vos donnees restent chez vous.</p>
+        </div>
+
+        <!-- Pricing Card -->
+        <div class="pricing-card">
+            <div class="pricing-header">
+                <div class="pricing-title">Abonnement Pro</div>
+                <div class="pricing-amount">
+                    <span class="price">150</span>
+                    <span class="currency">EUR</span>
+                    <span class="period">/ mois</span>
+                </div>
+                <div class="competitor-price"><s>1999$/mois</s> chez EAS Enterprise</div>
+            </div>
+
+            <ul class="features-list">
+                <li class="feature-item">
+                    <span class="feature-check">&#10003;</span>
+                    <div class="feature-content">
+                        <h4>Builds illimites</h4>
+                        <p>Aucune limite mensuelle, compilez autant que necessaire</p>
+                    </div>
+                </li>
+                <li class="feature-item">
+                    <span class="feature-check">&#10003;</span>
+                    <div class="feature-content">
+                        <h4>Queue illimitee</h4>
+                        <p>Empilez vos builds sans restriction</p>
+                    </div>
+                </li>
+                <li class="feature-item">
+                    <span class="feature-number">1</span>
+                    <div class="feature-content">
+                        <h4>1 build simultane</h4>
+                        <p>Les builds sont traites un par un dans l'ordre</p>
+                    </div>
+                </li>
+                <li class="feature-item">
+                    <span class="feature-check">&#10003;</span>
+                    <div class="feature-content">
+                        <h4>Android uniquement</h4>
+                        <p>APK Release & Debug pour React Native, Expo, Flutter</p>
+                    </div>
+                </li>
+                <li class="feature-item">
+                    <span class="feature-check">&#10003;</span>
+                    <div class="feature-content">
+                        <h4>Logs en temps reel</h4>
+                        <p>Suivez la progression de chaque build en direct</p>
+                    </div>
+                </li>
+                <li class="feature-item">
+                    <span class="feature-check">&#10003;</span>
+                    <div class="feature-content">
+                        <h4>Telechargement APK</h4>
+                        <p>Lien de telechargement direct des la fin du build</p>
+                    </div>
+                </li>
+                <li class="feature-item">
+                    <span class="feature-check">&#10003;</span>
+                    <div class="feature-content">
+                        <h4>100% prive</h4>
+                        <p>Vos donnees et code source ne quittent jamais notre infra</p>
+                    </div>
+                </li>
+            </ul>
+
+            <button class="subscribe-btn" id="subscribeBtn">
+                S'abonner maintenant
+                <span class="arrow">&rarr;</span>
+            </button>
+
+            <div class="stripe-badge">
+                <svg class="stripe-logo" viewBox="0 0 60 25" fill="currentColor">
+                    <path d="M59.64 14.28h-8.06c.19 1.93 1.6 2.55 3.2 2.55 1.64 0 2.96-.37 4.05-.95v3.32a12.8 12.8 0 0 1-4.56.85c-4.14 0-6.94-2.54-6.94-6.96 0-3.86 2.53-6.96 6.35-6.96 3.82 0 5.96 3.1 5.96 6.96v1.19zm-4.45-5.24c-1.3 0-2.33 1.03-2.33 2.58h4.62c0-1.55-1-2.58-2.29-2.58zM40.95 20.3c-1.44 0-2.32-.6-2.9-1.04l-.02 4.63-4.12.87V6.57h3.76l.08 1.02a4.7 4.7 0 0 1 3.23-1.29c2.9 0 5.62 2.6 5.62 7.01 0 4.42-2.72 7-5.65 7zm-.95-10.58c-.92 0-1.54.36-1.97.78l.02 5.93c.4.41 1.01.79 1.95.79 1.49 0 2.52-1.65 2.52-3.76 0-2.1-1.03-3.74-2.52-3.74zM28.24 5.57c-1.42 0-2.58 1.16-2.58 2.58 0 1.42 1.16 2.58 2.58 2.58 1.42 0 2.58-1.16 2.58-2.58 0-1.42-1.16-2.58-2.58-2.58zm-2.06 14.51V6.57h4.12v13.51h-4.12zM19.95 20.3c-1.43 0-2.4-.78-2.67-1.23l-.02.97h-3.74V1.13l4.12-.87v6.16a4.7 4.7 0 0 1 2.4-.55c2.85 0 5.39 2.3 5.39 7.1 0 4.99-2.45 7.33-5.48 7.33zm-.77-10.65c-.81 0-1.4.27-1.63.63v6.07c.23.35.79.66 1.6.66 1.24 0 2.13-1.38 2.13-3.71 0-2.22-.86-3.65-2.1-3.65zM7.53 12.86c0-1.35 1.13-1.87 2.96-1.87 1.56 0 3.54.47 5.1 1.32V8.16A14.05 14.05 0 0 0 10.5 7.2c-3.95 0-6.58 2.06-6.58 5.5 0 5.37 7.38 4.51 7.38 6.82 0 1.6-1.4 2.12-3.36 2.12-1.81 0-4.13-.75-5.96-1.76v4.2A15.1 15.1 0 0 0 8 25c4.05 0 6.83-2 6.83-5.48-.02-5.8-7.3-4.76-7.3-6.66z"/>
+                </svg>
+                <span>Paiement securise</span>
+            </div>
+        </div>
+
+        <!-- Comparison Table -->
+        <div class="comparison-section">
+            <h2>Comparaison des prix</h2>
+            <table class="comparison-table">
+                <thead>
+                    <tr>
+                        <th>Plateforme</th>
+                        <th>Prix/mois</th>
+                        <th>Builds inclus</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>EAS Build Production</td>
+                        <td class="price-cell">199$</td>
+                        <td>~100 builds</td>
+                    </tr>
+                    <tr>
+                        <td>EAS Build Enterprise</td>
+                        <td class="price-cell">1999$</td>
+                        <td>~500 builds</td>
+                    </tr>
+                    <tr>
+                        <td>Codemagic Pro</td>
+                        <td class="price-cell">449$</td>
+                        <td>Illimite</td>
+                    </tr>
+                    <tr class="highlight">
+                        <td>Synthesics</td>
+                        <td class="price-cell">150EUR</td>
+                        <td>Illimite</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- FAQ -->
+        <div class="faq-section">
+            <h2>Questions frequentes</h2>
+
+            <div class="faq-item">
+                <div class="faq-question">
+                    <span>Pourquoi Android uniquement ?</span>
+                    <span class="faq-arrow">&darr;</span>
+                </div>
+                <div class="faq-answer">
+                    Les builds iOS necessitent un Mac et un compte Apple Developer. En nous concentrant sur Android, nous offrons un prix 80% inferieur aux alternatives.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">
+                    <span>Combien de temps prend un build ?</span>
+                    <span class="faq-arrow">&darr;</span>
+                </div>
+                <div class="faq-answer">
+                    En moyenne 10-20 minutes selon la taille du projet.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">
+                    <span>Puis-je annuler a tout moment ?</span>
+                    <span class="faq-arrow">&darr;</span>
+                </div>
+                <div class="faq-answer">
+                    Oui, vous pouvez annuler a tout moment. L'acces reste actif jusqu'a la fin de la periode payee.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">
+                    <span>Quels frameworks sont supportes ?</span>
+                    <span class="faq-arrow">&darr;</span>
+                </div>
+                <div class="faq-answer">
+                    React Native, Expo (avec prebuild automatique), et Flutter.
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <span>Synthesics Build Service</span>
+            <span>•</span>
+            <span>Paiement securise par Stripe</span>
+        </footer>
+    </div>
+
+    <script>
+        // FAQ Toggle
+        document.querySelectorAll('.faq-question').forEach(question => {
+            question.addEventListener('click', () => {
+                const item = question.parentElement;
+                item.classList.toggle('active');
+            });
+        });
+
+        // Subscribe Button - Redirect to Stripe
+        document.getElementById('subscribeBtn').addEventListener('click', async () => {
+            const token = localStorage.getItem('session_token');
+
+            if (!token) {
+                window.location.href = '/login.html?redirect=pricing';
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/subscription/checkout', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.url) {
+                    window.location.href = data.url;
+                } else if (data.error) {
+                    alert(data.error);
+                }
+            } catch (err) {
+                alert('Erreur lors de la redirection vers le paiement');
+                console.error(err);
+            }
+        });
+    </script>
+</body>
+</html>

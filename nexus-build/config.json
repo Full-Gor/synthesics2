@@ -110,7 +110,7 @@
   "paths": {
     "androidSdk": "C:\\Users\\almou\\AppData\\Local\\Android\\Sdk",
     "flutterSdk": "C:\\Users\\almou\\flutter",
-    "javaHome": "C:\\Program Files\\Eclipse Adoptium\\jdk-25.0.1.8-hotspot"
+    "javaHome": "C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.17.10-hotspot"
   },
   "storage": {
     "builds": "./storage/builds",
@@ -124,9 +124,28 @@
     "cleanupAfterBuild": true,
     "keepBuildsForDays": 7
   },
+  "powerManager": {
+    "enabled": true,
+    "idleMode": "balanced",
+    "buildMode": "high-performance",
+    "idleTimeout": 60000,
+    "cpuPriority": "high",
+    "monitorInterval": 5000,
+    "notes": {
+      "idleMode": "Mode quand aucun build: balanced, power-saver",
+      "buildMode": "Mode pendant build: high-performance, ultimate",
+      "idleTimeout": "Délai avant retour en mode idle (ms)",
+      "cpuPriority": "Priorité CPU des builds: normal, high, realtime"
+    }
+  },
   "auth": {
     "enabled": false,
     "token": ""
+  },
+  "stripe": {
+    "checkoutUrl": "https://buy.stripe.com/VOTRE_LIEN_STRIPE",
+    "priceId": "price_XXXX",
+    "webhookSecret": "whsec_XXXX"
   },
   "webhooks": {
     "secret": "",

@@ -508,6 +508,27 @@ async function handleRequest(req, res) {
             return fs.createReadStream(apkPath).pipe(res);
         }
 
+        // ==================== SUBSCRIPTION / STRIPE ====================
+
+        if (method === 'POST' && pathname === '/api/subscription/checkout') {
+            // Redirection vers Stripe Checkout
+            // TODO: Remplacer par votre clé Stripe et price_id
+            const STRIPE_CHECKOUT_URL = config.stripe?.checkoutUrl || 'https://buy.stripe.com/test_xxxx';
+
+            return sendJson(res, {
+                url: STRIPE_CHECKOUT_URL
+            });
+        }
+
+        if (method === 'GET' && pathname === '/api/subscription/status') {
+            // Vérifier le statut d'abonnement de l'utilisateur
+            const user = db.getUser(req.user?.id);
+            return sendJson(res, {
+                subscribed: user?.subscribed || false,
+                expiresAt: user?.subscriptionExpiresAt || null
+            });
+        }
+
         // ==================== STATS & OTHER ====================
 
         if (method === 'GET' && pathname === '/api/stats') {
@@ -654,8 +675,149 @@ server.listen(port, host, () => {
     if (config.tunnel?.enabled) tunnel.connect();
 });
 
+// === AUTO-RESTART & ZOMBIE KILLER ===
+
+const RESTART_INTERVAL = 6 * 60 * 60 * 1000; // 6 heures en ms
+const ZOMBIE_CHECK_INTERVAL = 5 * 60 * 1000; // Vérifier les zombies toutes les 5 min
+const ZOMBIE_TIMEOUT = 30 * 60 * 1000; // Un build est zombie après 30 min sans activité
+
+let serverStartTime = Date.now();
+
+/**
+ * Tue les processus Java/Gradle orphelins (zombies)
+ */
+async function killZombieProcesses() {
+    const { exec } = require('child_process');
+    const isWindows = process.platform === 'win32';
+
+    console.log('[Zombie Killer] Recherche de processus zombies...');
+
+    if (isWindows) {
+        // Sur Windows, chercher les processus java.exe qui tournent depuis longtemps
+        exec('tasklist /FI "IMAGENAME eq java.exe" /FO CSV', (err, stdout) => {
+            if (err) return;
+
+            const lines = stdout.trim().split('\n').slice(1); // Skip header
+            if (lines.length > 0 && lines[0].includes('java.exe')) {
+                console.log(`[Zombie Killer] ${lines.length} processus Java trouvés`);
+
+                // Tuer les processus Gradle daemon orphelins
+                exec('taskkill /F /IM java.exe /FI "WINDOWTITLE eq Gradle*"', (killErr, killOut) => {
+                    if (!killErr) {
+                        console.log('[Zombie Killer] Processus Gradle zombies tués');
+                    }
+                });
+            }
+        });
+
+        // Nettoyer aussi les processus node orphelins (sauf le serveur principal)
+        exec(`wmic process where "name='node.exe' and processid!=${process.pid}" get processid,commandline`, (err, stdout) => {
+            if (err) return;
+
+            const lines = stdout.trim().split('\n').slice(1);
+            const zombieNodes = lines.filter(line =>
+                line.includes('gradlew') ||
+                line.includes('expo') ||
+                line.includes('react-native')
+            );
+
+            if (zombieNodes.length > 0) {
+                console.log(`[Zombie Killer] ${zombieNodes.length} processus Node zombies trouvés`);
+            }
+        });
+    } else {
+        // Sur Linux
+        exec('pkill -f "gradle.*daemon" 2>/dev/null || true', () => {});
+        exec('pkill -f "java.*gradle" 2>/dev/null || true', () => {});
+    }
+}
+
+/**
+ * Nettoie les builds bloqués (zombies dans la queue)
+ */
+function cleanupZombieBuilds() {
+    const now = Date.now();
+    const builds = queue.list({ status: 'building' }).builds;
+
+    for (const build of builds) {
+        const buildAge = now - new Date(build.startedAt).getTime();
+        const lastLogAge = build.logs?.length > 0
+            ? now - new Date(build.logs[build.logs.length - 1].timestamp).getTime()
+            : buildAge;
+
+        // Si le build n'a pas eu de log depuis ZOMBIE_TIMEOUT, le marquer comme échoué
+        if (lastLogAge > ZOMBIE_TIMEOUT) {
+            console.log(`[Zombie Killer] Build zombie détecté: ${build.id} (pas d'activité depuis ${Math.round(lastLogAge / 60000)} min)`);
+            queue.complete(build.id, false, {
+                error: 'Build zombie - timeout sans activité'
+            });
+        }
+    }
+}
+
+/**
+ * Redémarre le serveur proprement
+ */
+async function gracefulRestart() {
+    const uptime = Math.round((Date.now() - serverStartTime) / 1000 / 60);
+    console.log(`\n[Auto-Restart] Redémarrage planifié après ${uptime} minutes de fonctionnement...`);
+
+    // Attendre que les builds en cours se terminent (max 5 min)
+    const maxWait = 5 * 60 * 1000;
+    const startWait = Date.now();
+
+    while (Date.now() - startWait < maxWait) {
+        const activeBuilds = queue.list({ status: 'building' }).builds;
+        if (activeBuilds.length === 0) break;
+        console.log(`[Auto-Restart] Attente de ${activeBuilds.length} build(s) en cours...`);
+        await new Promise(r => setTimeout(r, 10000));
+    }
+
+    // Tuer les processus zombies avant de redémarrer
+    await killZombieProcesses();
+
+    // Déconnecter le tunnel
+    tunnel.disconnect();
+
+    // Restaurer le power plan
+    await builder.shutdown();
+
+    // Fermer le serveur et relancer
+    server.close(() => {
+        console.log('[Auto-Restart] Serveur fermé, redémarrage...');
+
+        // Relancer le processus
+        const { spawn } = require('child_process');
+        const child = spawn(process.argv[0], process.argv.slice(1), {
+            detached: true,
+            stdio: 'inherit',
+            cwd: process.cwd()
+        });
+        child.unref();
+
+        process.exit(0);
+    });
+}
+
+// Planifier le redémarrage automatique toutes les 6h
+setInterval(() => {
+    gracefulRestart();
+}, RESTART_INTERVAL);
+
+// Vérifier les zombies périodiquement
+setInterval(() => {
+    cleanupZombieBuilds();
+    killZombieProcesses();
+}, ZOMBIE_CHECK_INTERVAL);
+
+console.log('[Auto-Restart] Redémarrage planifié toutes les 6 heures');
+console.log('[Zombie Killer] Nettoyage des zombies toutes les 5 minutes');
+
+// === SIGNAL HANDLERS ===
+
 process.on('SIGINT', async () => {
     console.log('\n[Server] Arrêt en cours...');
+    await killZombieProcesses();
     tunnel.disconnect();
     await builder.shutdown(); // Restaurer le plan d'alimentation original
     server.close(() => {
@@ -665,6 +827,7 @@ process.on('SIGINT', async () => {
 });
 
 process.on('SIGTERM', async () => {
+    await killZombieProcesses();
     tunnel.disconnect();
     await builder.shutdown();
     server.close(() => process.exit(0));
